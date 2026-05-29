@@ -191,7 +191,7 @@ function render(items, term) {
 function search(term) {
   if (!term) {
     const sorted = [...allLikes].sort((a, b) =>
-      (b.datetime || "").localeCompare(a.datetime || "")
+      (Date.parse(b.datetime || "") || 0) - (Date.parse(a.datetime || "") || 0)
     );
     render(sorted, "");
     return;
@@ -203,7 +203,10 @@ function search(term) {
     const hay = `${t.text || ""} ${t.author || ""} ${t.displayName || ""}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
-  matches.sort((a, b) => (b.datetime || "").localeCompare(a.datetime || ""));
+  matches.sort(
+    (a, b) =>
+      (Date.parse(b.datetime || "") || 0) - (Date.parse(a.datetime || "") || 0)
+  );
   render(matches, term);
 }
 
