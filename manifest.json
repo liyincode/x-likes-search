@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "X Likes Search",
+  "version": "0.3.0",
+  "description": "Index your X (Twitter) likes locally via GraphQL capture-and-replay, then browse them in an X-styled feed with instant keyword search.",
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "action": {
+    "default_title": "X Likes Search"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["https://x.com/*", "https://twitter.com/*"]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>X Likes Search</title>
+    <link rel="stylesheet" href="feed.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <h1>Likes</h1>
+          <div class="actions">
+            <button id="open-likes" class="btn ghost" title="Open X likes page to sync">Open X likes</button>
+            <button id="export" class="btn ghost" title="Export indexed likes as JSON">Export</button>
+            <button id="clear" class="btn ghost danger" title="Clear local cache">Clear</button>
+          </div>
+        </div>
+        <div class="search">
+          <input
+            id="q"
+            type="search"
+            placeholder="Search liked tweets…"
+            autofocus
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="search-meta">
+            <span id="meta"></span>
+            <span id="hint">Enter / ↑↓ navigate · Cmd+Enter or click open · Esc clear</span>
+          </div>
+        </div>
+      </header>
+      <main id="results" class="feed"></main>
+      <footer class="bottombar"><span id="footstate"></span></footer>
+    </div>
+    <script src="feed.js"></script>
+  </body>
+</html>
