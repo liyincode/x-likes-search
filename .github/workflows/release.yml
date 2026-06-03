@@ -38,6 +38,7 @@ jobs:
             feed.js \
             feed-core.js \
             assets/fonts \
+            assets/icons \
             -x '*/.DS_Store'
 
       - name: Create release
