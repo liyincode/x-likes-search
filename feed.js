@@ -137,9 +137,10 @@ function updateStatus() {
 }
 
 function updateSyncButtons() {
-  const remote = syncState.running && syncState.source === "page";
   const btn = $("#open-likes");
-  if (btn) btn.textContent = syncState.running && !remote ? "stop" : "sync";
+  const exportBtn = $("#export");
+  const pageSync = syncState.running && syncState.source === "page";
+  const workerSync = syncState.running && !pageSync;
   const empty = allLikes.length === 0;
   const setHidden = (sel, hidden) => {
     const el = $(sel);
@@ -148,6 +149,26 @@ function updateSyncButtons() {
   setHidden("#open-likes", empty);
   setHidden("#export", empty);
   setHidden(".filters", empty);
+
+  if (btn) {
+    if (pageSync) {
+      btn.textContent = "syncing";
+      btn.disabled = true;
+      btn.title = "Syncing on your X likes tab — use Stop there";
+    } else if (workerSync) {
+      btn.textContent = "stop";
+      btn.disabled = false;
+      btn.title = "Stop sync";
+    } else {
+      btn.textContent = "sync";
+      btn.disabled = false;
+      btn.title = "Sync likes";
+    }
+  }
+  if (exportBtn) {
+    exportBtn.disabled = Boolean(syncState.running);
+    exportBtn.title = syncState.running ? "Wait until sync finishes" : "Export indexed likes as JSON";
+  }
 }
 
 function updateCount(baseLen) {
@@ -356,6 +377,8 @@ function sendToWorker(msg) {
 }
 
 async function toggleSync() {
+  const btn = $("#open-likes");
+  if (btn && btn.disabled) return;
   if (syncState.running) {
     if (syncState.source === "page") {
       showToast("Syncing on your X tab — click Stop there");
@@ -379,8 +402,9 @@ async function toggleSync() {
 
 async function refreshSyncState() {
   const res = await sendToWorker({ type: "SYNC_STATUS" });
-  syncState = (res && res.state) || {};
-  if (res) syncState.running = Boolean(res.running);
+  const stored = (res && res.state) || {};
+  syncState = { ...stored };
+  syncState.running = Boolean(stored.running) || Boolean(res && res.running);
   updateStatus();
 }
 

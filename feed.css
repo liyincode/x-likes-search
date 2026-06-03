@@ -191,6 +191,17 @@ body {
 .ico-btn:hover { background: var(--panel-hi); color: var(--txt); border-color: var(--line-2); }
 .ico-btn.accent { color: oklch(0.99 0 0); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .ico-btn.accent:hover { filter: brightness(1.08); }
+.ico-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.ico-btn.accent:disabled {
+  filter: none;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: oklch(0.99 0 0 / 0.85);
+}
 .ico-btn.square { padding: 7px; width: 32px; height: 32px; justify-content: center; }
 .ico-btn svg { display: block; }
 
