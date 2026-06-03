@@ -154,23 +154,8 @@
     return out;
   }
 
-  function pipeline(all, opts) {
-    let list = all.slice();
-    if (opts.mediaOnly) list = list.filter((t) => t.media);
-    if (opts.author && opts.author !== "all") list = list.filter((t) => t.author.handle === opts.author);
-    return sortList(list, opts.sort || "newest");
-  }
-
-  function filteredView(all, opts) {
-    return pipeline(all, opts).filter((t) => matches(t, opts.q));
-  }
-
-  function authors(all) {
-    const seen = new Map();
-    all.forEach((t) => {
-      if (t.author.handle && !seen.has(t.author.handle)) seen.set(t.author.handle, t.author);
-    });
-    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  function pipeline(all, sort = "newest") {
+    return sortList(all, sort);
   }
 
   function initials(name) {
@@ -307,8 +292,6 @@
     highlight,
     sortList,
     pipeline,
-    filteredView,
-    authors,
     initials,
     avatarColors,
     relativeDate,

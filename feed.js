@@ -22,7 +22,7 @@ const els = {
   toastText: $("#toast-txt"),
 };
 
-const state = { q: "", sort: "newest", author: "all", mediaOnly: false, active: -1 };
+const state = { q: "", sort: "newest", active: -1 };
 let allLikes = [];
 let view = [];
 let rawLikes = [];
@@ -48,7 +48,7 @@ function appNow() {
 }
 
 function pipelineCacheKey() {
-  return `${state.sort}|${state.author}|${state.mediaOnly ? 1 : 0}`;
+  return state.sort;
 }
 
 function invalidatePipelineCache() {
@@ -60,7 +60,7 @@ function getCachedBase() {
   const key = pipelineCacheKey();
   if (cachedBase && cachedPipelineKey === key) return cachedBase;
   cachedPipelineKey = key;
-  cachedBase = Core.pipeline(allLikes, state);
+  cachedBase = Core.pipeline(allLikes, state.sort);
   return cachedBase;
 }
 
@@ -182,7 +182,6 @@ function avatarHTML(t) {
 }
 
 function rowHTML(t, i) {
-  const mediaTag = t.media ? `<span class="mtag">▦ ${Core.escapeHTML(t.media.type || "media")}</span>` : "";
   const stats = t.stats
     ? `<span class="stats">${Number.isFinite(t.stats.likes) ? `<span>♡ ${t.stats.likes}</span>` : ""}${Number.isFinite(t.stats.reposts) ? `<span>⇄ ${t.stats.reposts}</span>` : ""}</span>`
     : "";
@@ -194,7 +193,6 @@ function rowHTML(t, i) {
         <div class="line1">
           <span class="nm">${Core.highlight(t.author.name, state.q)}</span>
           <span class="hd">@${Core.highlight(t.author.handle, state.q)}</span>
-          ${mediaTag}
         </div>
         <div class="snip">${Core.highlight(t.text, state.q) || '<span style="opacity:.55">(no text — link only)</span>'}</div>
         <div class="expand">

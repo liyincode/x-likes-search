@@ -26,16 +26,10 @@ test("search matches text, display name, and handle with escaped highlights", ()
   assert.equal(Core.highlight("<Claude> & PR", "claude pr"), "&lt;<mark>Claude</mark>&gt; &amp; <mark>PR</mark>");
 });
 
-test("sorts and filters by newest, oldest, author, media, and author handle", () => {
-  assert.deepEqual(Core.pipeline(likes, { sort: "newest" }).map((t) => t.tweetId), ["1001", "1003", "1002", "1004"]);
-  assert.deepEqual(Core.pipeline(likes, { sort: "oldest" }).map((t) => t.tweetId), ["1004", "1002", "1003", "1001"]);
-  assert.deepEqual(Core.pipeline(likes, { sort: "author" }).map((t) => t.author.name), ["Devon Park", "Elena Rossi", "Omar Haddad", "Ren Tanaka"]);
-  assert.deepEqual(Core.pipeline(likes, { sort: "newest", author: "rentanaka" }).map((t) => t.tweetId), ["1003"]);
-  assert.deepEqual(Core.pipeline(likes, { sort: "newest", mediaOnly: true }).map((t) => t.tweetId), []);
-});
-
-test("authors are unique and sorted", () => {
-  assert.deepEqual(Core.authors(likes).map((a) => a.handle), ["devonml", "elenacodes", "omarml", "rentanaka"]);
+test("sorts by newest, oldest, and author name", () => {
+  assert.deepEqual(Core.pipeline(likes, "newest").map((t) => t.tweetId), ["1001", "1003", "1002", "1004"]);
+  assert.deepEqual(Core.pipeline(likes, "oldest").map((t) => t.tweetId), ["1004", "1002", "1003", "1001"]);
+  assert.deepEqual(Core.pipeline(likes, "author").map((t) => t.author.name), ["Devon Park", "Elena Rossi", "Omar Haddad", "Ren Tanaka"]);
 });
 
 test("search history dedupes and caps at six entries", () => {

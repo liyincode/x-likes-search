@@ -67,8 +67,8 @@ function benchRowHTML(t, i, q, activeIndex) {
     </div>`;
 }
 
-function simulateLegacyRender(all, opts, q) {
-  const base = Core.pipeline(all, opts);
+function simulateLegacyRender(all, sort, q) {
+  const base = Core.pipeline(all, sort);
   const view = base.filter((t) => Core.matches(t, q));
   const parts = [];
   for (let i = 0; i < view.length; i += 1) parts.push(benchRowHTML(view[i], i, q, -1));
@@ -120,10 +120,10 @@ function ratio(a, b) {
 
 test(`feed render bench (${COUNT} likes)`, () => {
   const all = buildLikes(COUNT);
-  const opts = { sort: "newest", author: "all", mediaOnly: false };
-  const base = Core.pipeline(all, opts);
+  const sort = "newest";
+  const base = Core.pipeline(all, sort);
 
-  const legacy = timeRuns(() => simulateLegacyRender(all, opts, QUERY));
+  const legacy = timeRuns(() => simulateLegacyRender(all, sort, QUERY));
   const p0 = timeRuns(() => simulateP0FilterOnly(base, QUERY));
   const p1 = timeRuns(() => simulateP1VirtualRender(base, QUERY));
 

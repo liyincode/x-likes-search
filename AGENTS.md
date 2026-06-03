@@ -13,7 +13,7 @@ The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is 
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
 - **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
 - **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
-- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the on-page **Sync** button (a pill anchored under the **Likes** tab) — or click **sync likes** in the X Likes Search tab — then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
+- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the on-page **Sync** button (a pill anchored under the **Likes** tab) — or click **sync** in the X Likes Search tab — then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
 
 ### Tests
 

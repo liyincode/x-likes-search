@@ -2,14 +2,14 @@
 
 Browse and search your X (Twitter) liked tweets in an X-styled feed — locally, instantly, offline.
 
-**v0.4.** Click the extension icon and a full-page **X Likes Search** tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, author/media filters, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page — no need to visit `/likes` manually.
+**v0.4.** Click the extension icon and a full-page **X Likes Search** tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page once you have indexed likes — no need to keep an x.com tab open during sync.
 
 ## How it works
 
 1. **`inject.js`** patches `window.fetch` from `document_start` on `x.com`. When X's own JS loads your likes feed, the URL + auth headers are captured into `chrome.storage`.
 2. **`background.js`** (service worker) does the actual sync: given the captured template it replays the Likes GraphQL request with `fetch(..., { credentials: "include" })`, so the browser attaches your x.com cookies and the captured `x-csrf-token`/bearer headers authenticate it — **no x.com tab needed**. It paginates with successive `cursor` values, with retry/backoff for transient errors and full/incremental modes for completeness, writing each tweet's id / author / display name / avatar / full text / timestamp / like & repost counts into `chrome.storage.local`.
 3. **`content.js`** handles capture (injects `inject.js`, persists the template) and renders the on-page **Sync** button — a small pill anchored under the profile's **Likes** tab — which runs a page-world sync as a fallback path.
-4. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): the GraphQL `parseLikesResponse` (shared by the SW and content script) plus normalizing likes into view models, search matching/highlighting, sorting, filtering, author lists, relative dates, and history. It runs in the browser (`window.FeedCore`), the service worker (`importScripts`), and under Node (unit tests).
+4. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): the GraphQL `parseLikesResponse` (shared by the SW and content script) plus normalizing likes into view models, search matching/highlighting, sorting, relative dates, and history. It runs in the browser (`window.FeedCore`), the service worker (`importScripts`), and under Node (unit tests).
 5. **`feed.html` + `feed.js`** is the search UI — a thin DOM/`chrome.*` layer over `feed-core.js` that messages the service worker to drive syncs. Plain substring match (text + author + display name), instant.
 
 No server, no manual auth, nothing leaves your browser.
@@ -41,7 +41,8 @@ If a sync ever errors with an auth/HTTP 403 message, the captured template went 
 - **`Enter` / `↓`** next match · **`↑`** previous match (Cmd+F-style — Enter does **not** open the tweet, just navigates through matches).
 - **`Cmd+Enter` (macOS) / `Ctrl+Enter`** opens the selected tweet in a background tab. **Double-click** a card opens too; a single click expands it to show stats and copy/open actions.
 - **`Esc`** clear search · **`/`** focus search bar.
-- **Filters & sort:** toggle `media only`, pick an author, and sort by newest / oldest / author.
+- **Sort:** newest / oldest / author (segmented control under the search bar).
+- **Sync & export:** header **sync** / **stop** and **export** appear once at least one like is indexed; with an empty index, follow the empty-state steps on x.com first.
 - **Theme:** dark/light toggle in the header (remembered across sessions).
 - **History:** recent searches appear under the empty search box; click to re-run, ✕ to remove.
 - **export** (JSON download) for data management.
@@ -78,7 +79,8 @@ There's no build step — the extension is loaded unpacked as-is. Tests are opti
 npm install            # dev deps only (Playwright, pixelmatch, pngjs)
 npm run test:unit      # feed-core.js logic — pure Node, no browser
 npm run test:visual    # Playwright: interactions + pixel diff vs design/
-npm test               # both
+npm run test:perf      # render benchmark (node:test)
+npm test               # unit + visual
 ```
 
 `feed-core.js` holds all the testable logic so it can run under Node without a DOM. The visual suite mocks the `chrome.*` APIs and pixel-compares the implementation against `design/x-likes-search/Likes Finder.html`.
