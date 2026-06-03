@@ -360,7 +360,7 @@ function showToast(msg) {
 function openTweet(t) {
   if (!t?.url) return;
   pushHistory(state.q);
-  chrome.tabs.create({ url: t.url, active: false });
+  chrome.tabs.create({ url: t.url, active: true });
 }
 
 function sendToWorker(msg) {

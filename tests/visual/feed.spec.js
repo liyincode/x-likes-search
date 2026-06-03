@@ -158,7 +158,7 @@ test("searches, navigates, opens, clears, and copies", async ({ page, browserNam
   await expect(page.locator(".row.active")).toHaveAttribute("data-id", "1002");
   await expect(page.locator(".row.active .stats")).toHaveText("♡ 70");
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
-  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({ url: "https://x.com/elenacodes/status/1002", active: false });
+  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({ url: "https://x.com/elenacodes/status/1002", active: true });
 
   await page.locator(".row.active .copy-btn").click();
   await expect(page.locator("#toast")).toHaveClass(/show/);
