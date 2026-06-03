@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' manifest.json | head -1 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+          echo "tag version:      $tag"
+          echo "manifest version: $manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::Tag ($tag) does not match manifest.json version ($manifest). Bump manifest.json before tagging."
+            exit 1
+          fi
+
+      - name: Package extension
+        run: |
+          zip -j "x-likes-search-${GITHUB_REF_NAME}.zip" \
+            manifest.json \
+            background.js \
+            content.js \
+            inject.js \
+            feed.html \
+            feed.css \
+            feed.js
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: x-likes-search-${{ github.ref_name }}.zip
+          generate_release_notes: true
