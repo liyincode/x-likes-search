@@ -1,89 +1,83 @@
-# X Likes Search (Chrome Extension)
+# X Likes Search
 
-Browse and search your X (Twitter) liked tweets in an X-styled feed — locally, instantly, offline.
+[中文说明](README.zh-CN.md)
 
-**v0.4.** Click the extension icon and a full-page **X Likes Search** tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page once you have indexed likes — no need to keep an x.com tab open during sync.
+A Chrome extension for searching tweets you have liked on X / Twitter.
 
-## How it works
+If you use likes as bookmarks, finding an old liked tweet later usually means scrolling your Likes page forever. X Likes Search syncs your liked tweets locally and lets you search them by keyword.
 
-1. **`inject.js`** patches `window.fetch` from `document_start` on `x.com`. When X's own JS loads your likes feed, the URL + auth headers are captured into `chrome.storage`.
-2. **`background.js`** (service worker) does the actual sync: given the captured template it replays the Likes GraphQL request with `fetch(..., { credentials: "include" })`, so the browser attaches your x.com cookies and the captured `x-csrf-token`/bearer headers authenticate it — **no x.com tab needed**. It paginates with successive `cursor` values, with retry/backoff for transient errors and full/incremental modes for completeness, writing each tweet's id / author / display name / avatar / full text / timestamp / like & repost counts into `chrome.storage.local`.
-3. **`content.js`** handles capture (injects `inject.js`, persists the template) and renders the on-page **Sync** button — a small pill anchored under the profile's **Likes** tab — which runs a page-world sync as a fallback path.
-4. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): the GraphQL `parseLikesResponse` (shared by the SW and content script) plus normalizing likes into view models, search matching/highlighting, sorting, relative dates, and history. It runs in the browser (`window.FeedCore`), the service worker (`importScripts`), and under Node (unit tests).
-5. **`feed.html` + `feed.js`** is the search UI — a thin DOM/`chrome.*` layer over `feed-core.js` that messages the service worker to drive syncs. Plain substring match (text + author + display name), instant.
+Your data stays in your browser. There is no server, no manual login flow, and nothing is uploaded.
 
-No server, no manual auth, nothing leaves your browser.
+## Install
 
-## Install (unpacked)
+1. Open the latest release page and download the zip file:
+   <https://github.com/liyincode/x-likes-search/releases/latest>
+2. Unzip the downloaded file.
+3. Open Chrome and go to:
+   `chrome://extensions/`
+4. Turn on **Developer mode** in the top-right corner.
+5. Click **Load unpacked**.
+6. Select the unzipped `x-likes-search` folder.
+7. Pin the extension icon if you want quick access.
 
-1. Chrome → `chrome://extensions`
-2. Toggle **Developer mode**.
-3. **Load unpacked** → pick this folder.
-4. Pin the extension icon.
+> Chrome may warn you to only install unpacked extensions from trusted sources. This extension runs locally and stores data in your browser.
+
+If you cloned this repo instead, choose the repo folder directly when clicking **Load unpacked**.
 
 ## Usage
 
-### One-time: capture & sync
+### First-time setup
 
-**One-time setup — let the extension capture X's request:** open `https://x.com/<your-username>/likes` once and **refresh** so `inject.js` patches `fetch` before X's first request. That alone captures the auth template — capture is silent, you don't have to click anything. (On the likes page a small **Sync** button also appears under the **Likes** tab.) After this, you never need the likes page again unless the capture goes stale.
+1. Open your X Likes page:
+   `https://x.com/your-username/likes`
+2. Refresh the page once.
+   This lets the extension capture the request X uses to load your Likes timeline.
+3. Click the **X Likes Search** extension icon in the Chrome toolbar.
+4. Click **sync** in the search page to start syncing your liked tweets.
 
-**Then sync from anywhere:**
+After syncing, you can search your liked tweets directly from the extension page.
 
-- **From the X Likes Search tab (normal):** open the extension and click **sync** in the header. The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop**. New tweets stream into the list as they're fetched.
-- **From the X likes page (fallback):** a small **Sync** button sits under the **Likes** tab (inside the "your likes are private" banner) if you prefer to run it there. While it runs, the button shows a live count and ends on `Synced N`.
+### Search liked tweets
 
-If a sync ever errors with an auth/HTTP 403 message, the captured template went stale — just reload your likes page once to recapture, then sync again.
+- Type in the search box to filter results instantly.
+- Search matches tweet text, display names, and usernames.
+- Sort by newest, oldest, or author.
+- Double-click a tweet card to open the original tweet.
+- Click **sync** again later to sync incrementally. Existing tweets are skipped.
 
-### Browse & search
+## FAQ
 
-- Click the extension icon → opens (or focuses) the **X Likes Search** tab.
-- Type in the search box — results filter instantly with match highlighting, first match auto-selected.
-- **`Enter` / `↓`** next match · **`↑`** previous match (Cmd+F-style — Enter does **not** open the tweet, just navigates through matches).
-- **`Cmd+Enter` (macOS) / `Ctrl+Enter`** opens the selected tweet in a background tab. **Double-click** a card opens too; a single click expands it to show stats and copy/open actions.
-- **`Esc`** clear search · **`/`** focus search bar.
-- **Sort:** newest / oldest / author (segmented control under the search bar).
-- **Sync & export:** header **sync** / **stop** and **export** appear once at least one like is indexed; with an empty index, follow the empty-state steps on x.com first.
-- **Theme:** dark/light toggle in the header (remembered across sessions).
-- **History:** recent searches appear under the empty search box; click to re-run, ✕ to remove.
-- **export** (JSON download) for data management.
+### Will my data be uploaded?
 
-### Re-sync later
+No. This extension has no server. Your liked tweets are stored in Chrome's local extension storage.
 
-Re-running Sync is **incremental** — already-indexed tweets are skipped. The feed view auto-refreshes when sync writes new data.
+### Why do I need to open my X Likes page first?
 
-## Caveats
+The extension needs to capture the authenticated request your browser already sends to X when loading your Likes page. After that, syncing can run from the extension page, and you do not need to keep the X tab open.
 
-- **Completeness:** X paginates likes server-side; very old likes may stop being returned after enough pages even with valid cursors. Run sync again on different days; new pagination windows sometimes open.
-- **Rate limits:** if X errors mid-sync, wait a few minutes and resume — progress is saved every page.
-- **API changes:** auth-capture is robust to header/hash changes (we replay what your browser already sent), but if X reshapes the GraphQL response, `parseLikesResponse` in `feed-core.js` needs a small update.
+### What if syncing fails?
 
-## Files
+If you see an auth error, HTTP 403, or a similar failure, the captured request may have expired. Open your X Likes page, refresh it once, then return to the extension page and click **sync** again.
 
-```
-manifest.json     # MV3 manifest
-background.js     # Action click → open/focus feed.html tab
-content.js        # Inject bridge + capture + page-world sync + on-page Sync button (under the Likes tab)
-inject.js         # Page-world fetch/XHR patch + capture + replay bridge
-feed.html/css/js  # Full-page search UI (DOM + chrome.* layer)
-feed-core.js      # DOM-free, dependency-free core logic (UMD; shared by the UI and unit tests)
-assets/fonts/     # Bundled Space Grotesk + JetBrains Mono (no CDN, CSP-safe)
-design/           # Static design reference the visual tests diff against
-tests/            # Unit tests (node:test) + Playwright visual/interaction tests
-```
+## Notes
 
-## Development & tests
+- X loads likes through paginated internal APIs, so very old likes may not always be returned completely.
+- If X rate-limits the sync, wait a few minutes and try again. Progress is saved as pages are synced.
+- If X changes its internal response format, the extension may need an update.
 
-There's no build step — the extension is loaded unpacked as-is. Tests are optional tooling:
+## Development
 
-```
-npm install            # dev deps only (Playwright, pixelmatch, pngjs)
-npm run test:unit      # feed-core.js logic — pure Node, no browser
-npm run test:visual    # Playwright: interactions + pixel diff vs design/
-npm run test:perf      # render benchmark (node:test)
-npm test               # unit + visual
+This is a Manifest V3 Chrome extension with no build step. It can be loaded unpacked as-is.
+
+```bash
+npm install
+npm run test:unit
+npm run test:visual
+npm run test:perf
+npm test
 ```
 
-`feed-core.js` holds all the testable logic so it can run under Node without a DOM. The visual suite mocks the `chrome.*` APIs and pixel-compares the implementation against `design/x-likes-search/Likes Finder.html`.
+The extension source is plain HTML, CSS, and JavaScript. `feed-core.js` contains the testable, DOM-free logic shared by the UI, service worker, and tests.
 
 ## License
 
