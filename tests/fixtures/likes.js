@@ -1,0 +1,50 @@
+exports.index = {
+  "1001": {
+    tweetId: "1001",
+    text: "Spent the morning getting Claude to review a 4k-line PR. Caught two real race conditions.",
+    datetime: "2026-06-02T09:05:00Z",
+    author: "devonml",
+    displayName: "Devon Park",
+    avatar: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect width='24' height='24' fill='%2300a66a'/%3E%3C/svg%3E",
+    url: "https://x.com/devonml/status/1001",
+    capturedAt: 1780000000001,
+    likes: 193,
+    reposts: 76,
+  },
+  "1002": {
+    tweetId: "1002",
+    text: "Claude wrote a migration script, I reviewed it, it was correct, and I still ran it on a backup first.",
+    datetime: "2026-05-29T12:03:00Z",
+    author: "elenacodes",
+    displayName: "Elena Rossi",
+    avatar: "",
+    url: "https://x.com/elenacodes/status/1002",
+    capturedAt: 1780000000002,
+    likes: 70,
+  },
+  "1003": {
+    tweetId: "1003",
+    text: "Hot take: most design systems die because they ship components before they ship a point of view.",
+    datetime: "2026-06-01T16:12:00Z",
+    author: "rentanaka",
+    displayName: "Ren Tanaka",
+    avatar: "",
+    url: "https://x.com/rentanaka/status/1003",
+    capturedAt: 1780000000003,
+  },
+  "1004": {
+    tweetId: "1004",
+    text: "",
+    datetime: "2026-05-20T11:04:00Z",
+    author: "omarml",
+    displayName: "Omar Haddad",
+    avatar: "",
+    url: "https://x.com/omarml/status/1004",
+    capturedAt: 1780000000004,
+  },
+};
+
+exports.state = {
+  lastSyncAt: 1780440000000,
+  total: 4,
+};

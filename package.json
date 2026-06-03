@@ -1,0 +1,16 @@
+{
+  "name": "x-likes-search",
+  "version": "0.3.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:visual": "playwright test",
+    "test": "npm run test:unit && npm run test:visual"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0"
+  }
+}

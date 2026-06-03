@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Likes · Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ---------- themes ---------- */
+  html[data-theme="dark"] {
+    --bg: oklch(0.165 0.014 268);
+    --bg-2: oklch(0.205 0.016 268);
+    --panel: oklch(0.225 0.017 268);
+    --panel-hi: oklch(0.26 0.02 268);
+    --line: oklch(0.32 0.018 268);
+    --line-2: oklch(0.4 0.02 268);
+    --txt: oklch(0.95 0.005 268);
+    --txt-2: oklch(0.74 0.012 268);
+    --txt-3: oklch(0.56 0.014 268);
+    --accent: oklch(0.72 0.16 262);
+    --accent-2: oklch(0.78 0.15 200);
+    --accent-dim: oklch(0.72 0.16 262 / 0.16);
+    --mark-txt: oklch(0.88 0.1 262);
+    --glow: radial-gradient(900px 500px at 50% -8%, oklch(0.24 0.04 268), transparent 70%);
+    --shadow: 0 24px 60px -30px oklch(0 0 0 / 0.8);
+    --lb-bg: oklch(1 0 0 / 0.55); --lb-txt: oklch(0.18 0.02 268 / 0.85);
+  }
+  html[data-theme="light"] {
+    --bg: oklch(0.972 0.005 268);
+    --bg-2: oklch(0.987 0.003 268);
+    --panel: oklch(1 0 0);
+    --panel-hi: oklch(0.965 0.006 268);
+    --line: oklch(0.9 0.008 268);
+    --line-2: oklch(0.83 0.012 268);
+    --txt: oklch(0.26 0.016 268);
+    --txt-2: oklch(0.45 0.014 268);
+    --txt-3: oklch(0.6 0.012 268);
+    --accent: oklch(0.52 0.19 264);
+    --accent-2: oklch(0.55 0.13 205);
+    --accent-dim: oklch(0.52 0.19 264 / 0.1);
+    --mark-txt: oklch(0.4 0.16 264);
+    --glow: radial-gradient(900px 500px at 50% -8%, oklch(0.93 0.03 268), transparent 70%);
+    --shadow: 0 24px 50px -32px oklch(0.4 0.04 268 / 0.45);
+    --lb-bg: oklch(1 0 0 / 0.72); --lb-txt: oklch(0.28 0.02 268 / 0.88);
+  }
+  :root {
+    --disp: "Space Grotesk", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--txt);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased;
+    background-image: var(--glow); padding-bottom: 54px;
+    transition: background-color .25s, color .25s;
+  }
+  ::selection { background: var(--accent-dim); }
+  .shell { max-width: 780px; margin: 0 auto; padding: 0 22px; }
+
+  /* header */
+  .bar { display: flex; align-items: center; gap: 12px; padding: 22px 2px 26px; }
+  .logo { display: flex; align-items: baseline; gap: 9px; }
+  .logo b { font-family: var(--disp); font-weight: 600; font-size: 19px; letter-spacing: -0.01em; }
+  .logo .t { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+  .grow { flex: 1; }
+  .ico-btn {
+    font-family: var(--mono); font-size: 12px; color: var(--txt-2);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: background .14s, color .14s, border-color .14s;
+  }
+  .ico-btn:hover { background: var(--panel-hi); color: var(--txt); border-color: var(--line-2); }
+  .ico-btn.accent { color: oklch(0.99 0 0); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .ico-btn.accent:hover { filter: brightness(1.08); }
+  .ico-btn.square { padding: 7px; width: 32px; justify-content: center; }
+  .ico-btn svg { display: block; }
+
+  /* command search */
+  .cmd-wrap { position: relative; }
+  .cmd {
+    display: flex; align-items: center; gap: 14px;
+    background: linear-gradient(var(--panel), var(--bg-2));
+    border: 1px solid var(--line-2); border-radius: 15px; padding: 0 18px;
+    box-shadow: var(--shadow), inset 0 1px 0 oklch(1 0 0 / 0.04);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .cmd:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow); }
+  .cmd > svg { color: var(--accent); flex: none; }
+  .cmd input {
+    flex: 1; background: none; border: none; outline: none;
+    font-family: var(--disp); font-size: 22px; font-weight: 400; color: var(--txt);
+    padding: 19px 0; letter-spacing: -0.01em;
+  }
+  .cmd input::placeholder { color: var(--txt-3); }
+  .matchcount { font-family: var(--mono); font-size: 12.5px; color: var(--txt-3); flex: none; white-space: nowrap; }
+  .matchcount b { color: var(--accent); }
+
+  /* search history popover */
+  .history {
+    position: absolute; left: 0; right: 0; top: calc(100% + 8px); z-index: 20;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 13px;
+    box-shadow: var(--shadow); padding: 7px; display: none;
+  }
+  .history.show { display: block; }
+  .history .h-lbl { font-family: var(--mono); font-size: 10.5px; color: var(--txt-3); text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 10px 7px; display: flex; align-items: center; }
+  .history .h-lbl .clr { margin-left: auto; cursor: pointer; color: var(--txt-3); }
+  .history .h-lbl .clr:hover { color: var(--accent); }
+  .h-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--txt); }
+  .h-item:hover { background: var(--panel-hi); }
+  .h-item svg { color: var(--txt-3); flex: none; }
+  .h-item .x { margin-left: auto; color: var(--txt-3); font-family: var(--mono); font-size: 11px; opacity: 0; }
+  .h-item:hover .x { opacity: 1; }
+
+  /* filters */
+  .filters { display: flex; align-items: center; gap: 8px; margin: 16px 2px 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; color: var(--txt-2);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+    padding: 6px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .chip:hover { border-color: var(--line-2); color: var(--txt); }
+  .chip.on { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .chip .k { color: var(--txt-3); }
+  select.chip { appearance: none; padding-right: 26px;
+    background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%237a7a8a' fill='none' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+  .fgrow { flex: 1; }
+  .sortgrp { display: inline-flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .sortgrp button { font-family: var(--mono); font-size: 11.5px; color: var(--txt-3); background: none; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .sortgrp button[aria-pressed="true"] { background: var(--panel-hi); color: var(--txt); }
+
+  /* results */
+  .results { margin-top: 12px; }
+  .row {
+    display: grid; grid-template-columns: 24px 1fr auto; gap: 11px; align-items: start;
+    padding: 9px 13px; border-radius: 10px; cursor: pointer; position: relative;
+    border: 1px solid transparent; user-select: none;
+  }
+  .row:hover { background: var(--panel); }
+  .row.active { background: var(--panel); border-color: var(--line-2); box-shadow: inset 3px 0 0 var(--accent); }
+  .av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 9.5px; font-weight: 700; color: white; margin-top: 1px; }
+  .meta { min-width: 0; }
+  .meta .line1 { display: flex; align-items: baseline; gap: 7px; margin-bottom: 1px; }
+  .meta .nm { font-weight: 600; font-size: 13px; color: var(--txt); white-space: nowrap; }
+  .meta .hd { font-family: var(--mono); font-size: 11px; color: var(--txt-3); white-space: nowrap; }
+  .meta .mtag { font-family: var(--mono); font-size: 9.5px; color: var(--accent-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; flex: none; }
+  .meta .snip { font-size: 13px; color: var(--txt-2); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .row.active .meta .snip { -webkit-line-clamp: unset; color: var(--txt); white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
+  .when { font-family: var(--mono); font-size: 11px; color: var(--txt-3); white-space: nowrap; padding-top: 1px; }
+  mark { background: var(--accent-dim); color: var(--mark-txt); border-radius: 3px; padding: 0 2px; box-decoration-break: clone; font-weight: 500; }
+
+  .expand { grid-column: 2 / 4; margin-top: 0; display: none; }
+  .row.active .expand { display: block; }
+  .row-actions { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+  .stats { font-family: var(--mono); font-size: 11px; color: var(--txt-3); display: inline-flex; align-items: center; gap: 14px; }
+  .mini { font-family: var(--mono); font-size: 11px; color: var(--txt-2); background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .mini:hover { border-color: var(--accent); color: var(--accent); }
+  .mini.ok { border-color: oklch(0.7 0.15 150); color: oklch(0.7 0.15 150); }
+  .mini.primary { background: var(--accent); border-color: var(--accent); color: oklch(0.99 0 0); font-weight: 600; }
+  .mini.primary:hover { filter: brightness(1.08); color: oklch(0.99 0 0); }
+
+  /* empty / no result */
+  .empty { text-align: center; padding: 64px 20px; color: var(--txt-3); }
+  .empty .big { font-family: var(--disp); font-size: 21px; color: var(--txt-2); margin-bottom: 8px; }
+  .empty p { font-size: 13.5px; }
+  .empty .q { color: var(--accent); }
+
+  /* status bar */
+  .statusbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    background: color-mix(in oklch, var(--bg) 82%, transparent); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11.5px; color: var(--txt-3); }
+  .sb-inner { max-width: 780px; margin: 0 auto; padding: 9px 24px; display: flex; align-items: center; gap: 18px; }
+  .sb-status { color: var(--txt-2); display: inline-flex; align-items: center; gap: 8px; }
+  .sb-dot { width: 6px; height: 6px; border-radius: 50%; background: oklch(0.74 0.16 150); box-shadow: 0 0 0 3px oklch(0.74 0.16 150 / 0.2); }
+  .sb-grow { flex: 1; }
+  .sb-hints { display: flex; gap: 15px; }
+  .sb-hints span { display: inline-flex; align-items: center; gap: 6px; }
+  .key { background: var(--panel); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; color: var(--txt-2); font-size: 10.5px; min-width: 16px; text-align: center; display: inline-block; }
+
+  /* onboarding */
+  .onboard { position: fixed; inset: 0; z-index: 90; background: color-mix(in oklch, var(--bg) 55%, transparent); backdrop-filter: blur(10px); display: none; place-items: center; padding: 24px; }
+  .onboard.show { display: grid; }
+  .ob { background: linear-gradient(var(--panel), var(--bg-2)); border: 1px solid var(--line-2); border-radius: 18px; max-width: 500px; width: 100%; padding: 36px 36px 30px; box-shadow: var(--shadow); }
+  .ob h2 { font-family: var(--disp); font-weight: 600; font-size: 25px; letter-spacing: -0.01em; margin: 0 0 8px; }
+  .ob .sub { color: var(--txt-2); font-size: 14px; margin: 0 0 26px; }
+  .ob .steps { display: grid; gap: 13px; margin-bottom: 24px; }
+  .ob .step { display: flex; gap: 12px; align-items: flex-start; }
+  .ob .n { width: 24px; height: 24px; border-radius: 7px; flex: none; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+  .ob .sb { font-weight: 600; font-size: 14px; }
+  .ob .ss { color: var(--txt-2); font-size: 13px; }
+  .ob .prog { background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; margin-bottom: 22px; }
+  .ob .prog-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; color: var(--txt-2); margin-bottom: 9px; }
+  .ob .prog-top b { color: var(--accent); }
+  .ob .pbar { height: 6px; background: var(--line); border-radius: 100px; overflow: hidden; }
+  .ob .pbar > i { display: block; height: 100%; width: 68%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .ob-act { display: flex; gap: 10px; }
+
+  .toast { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%) translateY(10px); z-index: 95;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 16px;
+    font-family: var(--mono); font-size: 12px; color: var(--txt); box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; display: inline-flex; align-items: center; gap: 8px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .ic { color: oklch(0.72 0.15 150); }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="bar">
+      <div class="logo"><b>Likes</b><span class="t">Finder</span></div>
+      <div class="grow"></div>
+      <button class="ico-btn square" id="theme-btn" title="Toggle theme"></button>
+      <button class="ico-btn" id="show-onboard">first-run</button>
+      <button class="ico-btn">export</button>
+      <button class="ico-btn accent">open X likes ↗</button>
+    </div>
+
+    <div class="cmd-wrap">
+      <div class="cmd">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" />
+        <span class="matchcount" id="mc"></span>
+      </div>
+      <div class="history" id="history"></div>
+    </div>
+
+    <div class="filters">
+      <button class="chip" id="media-only"><span class="k">media</span> only</button>
+      <select class="chip" id="author"></select>
+      <div class="fgrow"></div>
+      <div class="sortgrp" id="sort">
+        <button data-sort="newest" aria-pressed="true">newest</button>
+        <button data-sort="oldest" aria-pressed="false">oldest</button>
+        <button data-sort="author" aria-pressed="false">author</button>
+      </div>
+    </div>
+
+    <div class="results" id="results"></div>
+    <div id="empty"></div>
+  </div>
+
+  <div class="statusbar">
+    <div class="sb-inner">
+      <span class="sb-status"><span class="sb-dot"></span><span id="sb-status">462 liked · local only</span></span>
+      <span class="sb-grow"></span>
+      <span class="sb-hints">
+        <span><span class="key">↵</span><span class="key">↓</span> next</span>
+        <span><span class="key">↑</span> prev</span>
+        <span><span class="key">⌘</span><span class="key">↵</span> open</span>
+        <span><span class="key">esc</span> clear</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard">
+    <div class="ob">
+      <h2>Index your likes</h2>
+      <p class="sub">Runs locally in your browser. No account, no upload, no server.</p>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes tab</div><div class="ss">We read the page as it loads — read-only.</div></div></div>
+        <div class="step"><div class="n">2</div><div><div class="sb">Scroll to the end once</div><div class="ss">Every tweet lands in local storage.</div></div></div>
+        <div class="step"><div class="n">3</div><div><div class="sb">Search instantly</div><div class="ss">Type here, jump with the keyboard, done.</div></div></div>
+      </div>
+      <div class="prog">
+        <div class="prog-top"><span>indexing…</span><span><b>314</b> / ~462</span></div>
+        <div class="pbar"><i></i></div>
+      </div>
+      <div class="ob-act">
+        <button class="ico-btn accent" style="flex:1; justify-content:center; padding:10px" id="ob-open">open X likes ↗</button>
+        <button class="ico-btn" id="ob-close" style="padding:10px 14px">later</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><span class="ic">✓</span><span id="toast-txt">Link copied</span></div>
+
+<script src="assets/data.js"></script>
+<script src="assets/core.js"></script>
+<script>
+(function () {
+  const ALL = window.LIKED;
+  const state = { q: "", sort: "newest", mediaOnly: false, author: "all", active: -1 };
+  let view = [];
+  const $ = (s) => document.querySelector(s);
+  const results = $("#results"), emptyBox = $("#empty"), mc = $("#mc"), input = $("#q");
+  const historyEl = $("#history");
+
+  /* ---------- theme ---------- */
+  const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
+  const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a6.5 6.5 0 0 0 10 10z"/></svg>';
+  const themeBtn = $("#theme-btn");
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    themeBtn.innerHTML = t === "dark" ? MOON : SUN;
+    try { localStorage.setItem("finder-theme", t); } catch (e) {}
+  }
+  themeBtn.addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    applyTheme(cur === "dark" ? "light" : "dark");
+  });
+  let initTheme = "dark";
+  try { const s = localStorage.getItem("finder-theme"); if (s) initTheme = s; } catch (e) {}
+  applyTheme(initTheme);
+
+  /* ---------- author dropdown ---------- */
+  const authSel = $("#author");
+  authSel.innerHTML = '<option value="all">all authors</option>' +
+    Core.authors(ALL).map((a) => `<option value="${a.handle}">@${a.handle}</option>`).join("");
+
+  /* ---------- search history ---------- */
+  function getHistory() { try { return JSON.parse(localStorage.getItem("finder-history") || "[]"); } catch (e) { return []; } }
+  function setHistory(arr) { try { localStorage.setItem("finder-history", JSON.stringify(arr)); } catch (e) {} }
+  function pushHistory(q) {
+    q = q.trim(); if (q.length < 2) return;
+    let arr = getHistory().filter((x) => x.toLowerCase() !== q.toLowerCase());
+    arr.unshift(q); arr = arr.slice(0, 6); setHistory(arr);
+  }
+  function removeHistory(q) { setHistory(getHistory().filter((x) => x !== q)); renderHistory(); }
+  function renderHistory() {
+    const arr = getHistory();
+    if (!arr.length) { historyEl.innerHTML = ""; return; }
+    historyEl.innerHTML =
+      '<div class="h-lbl">recent searches<span class="clr" id="h-clear">clear</span></div>' +
+      arr.map((q) => `<div class="h-item" data-q="${Core.escapeHTML(q)}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>${Core.escapeHTML(q)}</span><span class="x" data-del="${Core.escapeHTML(q)}">✕</span>
+      </div>`).join("");
+  }
+  function maybeShowHistory() {
+    if (document.activeElement === input && !input.value.trim() && getHistory().length) {
+      renderHistory(); historyEl.classList.add("show");
+    } else { historyEl.classList.remove("show"); }
+  }
+  input.addEventListener("focus", maybeShowHistory);
+  input.addEventListener("blur", () => setTimeout(() => historyEl.classList.remove("show"), 150));
+  historyEl.addEventListener("mousedown", (e) => {
+    const del = e.target.closest("[data-del]");
+    if (del) { e.preventDefault(); removeHistory(del.getAttribute("data-del")); return; }
+    if (e.target.id === "h-clear") { e.preventDefault(); setHistory([]); maybeShowHistory(); return; }
+    const item = e.target.closest(".h-item");
+    if (item) { e.preventDefault(); input.value = item.getAttribute("data-q"); state.q = input.value; state.active = -1; historyEl.classList.remove("show"); render(); input.focus(); }
+  });
+
+  /* ---------- render ---------- */
+  function render() {
+    const base = Core.pipeline(ALL, state);
+    view = base.filter((t) => Core.matches(t, state.q));
+    if (state.q && state.active < 0 && view.length) state.active = 0;
+    if (state.active >= view.length) state.active = view.length ? 0 : -1;
+    updateCount(base.length);
+
+    if (!view.length) {
+      results.innerHTML = "";
+      emptyBox.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+      return;
+    }
+    emptyBox.innerHTML = "";
+    results.innerHTML = view.map(rowHTML).join("");
+    [...results.children].forEach((el, i) => {
+      el.addEventListener("click", () => setActive(i, false));
+      el.addEventListener("dblclick", () => openTweet(view[i]));
+      el.querySelector(".open-btn")?.addEventListener("click", (ev) => { ev.stopPropagation(); openTweet(view[i]); });
+      el.querySelector(".copy-btn")?.addEventListener("click", (ev) => { ev.stopPropagation(); copyLink(view[i], ev.currentTarget); });
+    });
+    paintActive();
+  }
+
+  function updateCount(baseLen) {
+    if (state.q) {
+      const idx = state.active >= 0 ? state.active + 1 : 0;
+      mc.innerHTML = `<b>${idx}</b> / ${view.length} in ${ALL.length}`;
+    } else mc.innerHTML = `${baseLen} of ${ALL.length}`;
+  }
+
+  function rowHTML(t, i) {
+    const c = Core.avatarColors(t.author.hue);
+    const mtag = t.media ? `<span class="mtag">▦ ${Core.escapeHTML(t.media.type)}</span>` : "";
+    return `
+      <div class="row" data-i="${i}">
+        <div class="av" style="background:linear-gradient(135deg, ${c.bg}, ${c.bg2})">${Core.initials(t.author.name)}</div>
+        <div class="meta">
+          <div class="line1"><span class="nm">${Core.highlight(t.author.name, state.q)}</span><span class="hd">@${Core.highlight(t.author.handle, state.q)}</span>${mtag}</div>
+          <div class="snip">${Core.highlight(t.text, state.q)}</div>
+          <div class="expand">
+            <div class="row-actions">
+              <span class="stats"><span>♡ ${t.likes}</span><span>⇄ ${t.reposts}</span></span>
+              <span style="flex:1"></span>
+              <button class="mini copy-btn">⧉ copy link</button>
+              <button class="mini primary open-btn">open on X ↗</button>
+            </div>
+          </div>
+        </div>
+        <div class="when">${Core.relativeDate(t.date)}</div>
+      </div>`;
+  }
+
+  /* ---------- interactions ---------- */
+  function setActive(i, scroll) { state.active = i; paintActive(); updateCount(view.length); if (scroll) scrollToActive(); }
+  function paintActive() { [...results.children].forEach((el, k) => el.classList.toggle("active", k === state.active)); }
+  function scrollToActive() {
+    const el = results.children[state.active]; if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top < 150 || r.bottom > window.innerHeight - 70) window.scrollBy({ top: r.top - 200, behavior: "smooth" });
+  }
+  function move(d) {
+    if (!view.length) return;
+    let i = state.active < 0 ? 0 : state.active + d;
+    if (i < 0) i = view.length - 1; if (i >= view.length) i = 0;
+    setActive(i, true);
+  }
+  function openTweet(t) { pushHistory(state.q); window.open(t.url, "_blank"); }
+  function copyLink(t, btn) {
+    const done = () => { btn.classList.add("ok"); btn.textContent = "✓ copied"; showToast("Link copied to clipboard"); setTimeout(() => { btn.classList.remove("ok"); btn.textContent = "⧉ copy link"; }, 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.url).then(done).catch(done);
+    else { const ta = document.createElement("textarea"); ta.value = t.url; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); done(); }
+  }
+  let toastT;
+  function showToast(msg) { const el = $("#toast"); $("#toast-txt").textContent = msg; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 1600); }
+
+  /* ---------- events ---------- */
+  let histT;
+  input.addEventListener("input", () => {
+    state.q = input.value.trim(); state.active = -1; render(); maybeShowHistory();
+    clearTimeout(histT);
+    histT = setTimeout(() => { if (state.q.length >= 2 && view.length) pushHistory(state.q); }, 1100);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { if (input.value) { input.value=""; state.q=""; state.active=-1; render(); } historyEl.classList.remove("show"); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Enter") {
+      if ((e.metaKey || e.ctrlKey) && state.active >= 0) openTweet(view[state.active]);
+      else { e.preventDefault(); move(1); }
+    }
+  });
+  $("#sort").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.sort = b.dataset.sort;
+    [...e.currentTarget.children].forEach((x) => x.setAttribute("aria-pressed", x === b));
+    render();
+  });
+  $("#media-only").addEventListener("click", (e) => { state.mediaOnly = !state.mediaOnly; e.currentTarget.classList.toggle("on", state.mediaOnly); render(); });
+  authSel.addEventListener("change", () => { state.author = authSel.value; render(); });
+
+  $("#show-onboard").addEventListener("click", () => $("#onboard").classList.add("show"));
+  $("#ob-close").addEventListener("click", () => $("#onboard").classList.remove("show"));
+  $("#onboard").addEventListener("click", (e) => { if (e.target.id === "onboard") e.target.classList.remove("show"); });
+
+  render();
+  setTimeout(() => input.focus(), 100);
+})();
+</script>
+</body>
+</html>

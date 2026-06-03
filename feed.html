@@ -1,39 +1,86 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <title>X Likes Search</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Likes · Finder</title>
     <link rel="stylesheet" href="feed.css" />
   </head>
   <body>
-    <div class="app">
-      <header class="topbar">
-        <div class="topbar-inner">
-          <h1>Likes</h1>
-          <div class="actions">
-            <button id="open-likes" class="btn ghost" title="Open X likes page to sync">Open X likes</button>
-            <button id="export" class="btn ghost" title="Export indexed likes as JSON">Export</button>
-            <button id="clear" class="btn ghost danger" title="Clear local cache">Clear</button>
-          </div>
+    <div class="shell">
+      <div class="bar">
+        <div class="logo"><b>Likes</b><span class="t">Finder</span></div>
+        <div class="grow"></div>
+        <button class="ico-btn square" id="theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
+        <button class="ico-btn" id="show-onboard">first-run</button>
+        <button class="ico-btn" id="export">export</button>
+        <button class="ico-btn accent" id="open-likes">sync likes ↻</button>
+      </div>
+
+      <div class="cmd-wrap">
+        <div class="cmd">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+            <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" autofocus />
+          <span class="matchcount" id="mc"></span>
         </div>
-        <div class="search">
-          <input
-            id="q"
-            type="search"
-            placeholder="Search liked tweets…"
-            autofocus
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <div class="search-meta">
-            <span id="meta"></span>
-            <span id="hint">Enter / ↑↓ navigate · Cmd+Enter or click open · Esc clear</span>
-          </div>
+        <div class="history" id="history"></div>
+      </div>
+
+      <div class="filters">
+        <button class="chip" id="media-only" aria-pressed="false"><span class="k">media</span> only</button>
+        <select class="chip" id="author" aria-label="Author filter"></select>
+        <div class="fgrow"></div>
+        <div class="sortgrp" id="sort" aria-label="Sort results">
+          <button data-sort="newest" aria-pressed="true">newest</button>
+          <button data-sort="oldest" aria-pressed="false">oldest</button>
+          <button data-sort="author" aria-pressed="false">author</button>
         </div>
-      </header>
-      <main id="results" class="feed"></main>
-      <footer class="bottombar"><span id="footstate"></span></footer>
+      </div>
+
+      <div class="results" id="results"></div>
+      <div id="empty"></div>
     </div>
+
+    <div class="statusbar">
+      <div class="sb-inner">
+        <span class="sb-status"><span class="sb-dot"></span><span id="sb-status">0 liked · local only</span></span>
+        <span class="sb-grow"></span>
+        <span class="sb-hints">
+          <span><span class="key">↵</span><span class="key">↓</span> next</span>
+          <span><span class="key">↑</span> prev</span>
+          <span><span class="key">⌘</span><span class="key">↵</span> open</span>
+          <span><span class="key">esc</span> clear</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="onboard" id="onboard">
+      <div class="ob">
+        <h2>Index your likes</h2>
+        <p class="sub">Runs locally in your browser. No account, no upload, no server.</p>
+        <div class="steps">
+          <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes tab</div><div class="ss">We capture the Likes request from X in your browser.</div></div></div>
+          <div class="step"><div class="n">2</div><div><div class="sb">Click Sync on X</div><div class="ss">The extension replays pages locally with your browser session.</div></div></div>
+          <div class="step"><div class="n">3</div><div><div class="sb">Search instantly</div><div class="ss">Type here, jump with the keyboard, done.</div></div></div>
+        </div>
+        <div class="prog">
+          <div class="prog-top"><span>indexed locally</span><span><b id="ob-total">0</b> liked</span></div>
+          <div class="pbar"><i id="ob-bar"></i></div>
+        </div>
+        <div class="ob-act">
+          <button class="ico-btn accent" id="ob-open">sync likes ↻</button>
+          <button class="ico-btn" id="ob-close">later</button>
+          <button class="ico-btn danger" id="clear">clear cache</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"><span class="ic">✓</span><span id="toast-txt">Link copied</span></div>
+
+    <script src="feed-core.js"></script>
     <script src="feed.js"></script>
   </body>
 </html>
