@@ -2,14 +2,15 @@
 
 Browse and search your X (Twitter) liked tweets in an X-styled feed — locally, instantly, offline.
 
-**v0.3 — Finder.** Click the extension icon and a full-page "Likes · Finder" tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, author/media filters, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page — no need to visit `/likes` manually.
+**v0.4 — Finder.** Click the extension icon and a full-page "Likes · Finder" tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, author/media filters, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page — no need to visit `/likes` manually.
 
 ## How it works
 
-1. **`inject.js`** patches `window.fetch` from `document_start` on `x.com`. When X's own JS loads your likes feed, the URL + auth headers are captured.
-2. **`content.js`** stores that template and, on demand, replays the request with successive `cursor` values to paginate through your likes (~20 per page). Each tweet's id / author / display name / avatar / full text / timestamp / like & repost counts goes into `chrome.storage.local`. It also listens for `START_SYNC`/`STOP_SYNC` messages so the Finder tab can drive a sync remotely.
-3. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): normalizing stored likes into view models, search matching/highlighting, sorting, filtering, author lists, relative dates, and history management. It runs both in the browser (`window.FeedCore`) and under Node (for unit tests).
-4. **`feed.html` + `feed.js`** is the Finder UI — a thin DOM/`chrome.*` layer over `feed-core.js`. Plain substring match (text + author + display name), instant.
+1. **`inject.js`** patches `window.fetch` from `document_start` on `x.com`. When X's own JS loads your likes feed, the URL + auth headers are captured into `chrome.storage`.
+2. **`background.js`** (service worker) does the actual sync: given the captured template it replays the Likes GraphQL request with `fetch(..., { credentials: "include" })`, so the browser attaches your x.com cookies and the captured `x-csrf-token`/bearer headers authenticate it — **no x.com tab needed**. It paginates with successive `cursor` values, with retry/backoff for transient errors and full/incremental modes for completeness, writing each tweet's id / author / display name / avatar / full text / timestamp / like & repost counts into `chrome.storage.local`.
+3. **`content.js`** handles capture (injects `inject.js`, persists the template) and renders the on-page **Sync** button — a small pill anchored under the profile's **Likes** tab — which runs a page-world sync as a fallback path.
+4. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): the GraphQL `parseLikesResponse` (shared by the SW and content script) plus normalizing likes into view models, search matching/highlighting, sorting, filtering, author lists, relative dates, and history. It runs in the browser (`window.FeedCore`), the service worker (`importScripts`), and under Node (unit tests).
+5. **`feed.html` + `feed.js`** is the Finder UI — a thin DOM/`chrome.*` layer over `feed-core.js` that messages the service worker to drive syncs. Plain substring match (text + author + display name), instant.
 
 No server, no manual auth, nothing leaves your browser.
 
@@ -24,10 +25,14 @@ No server, no manual auth, nothing leaves your browser.
 
 ### One-time: capture & sync
 
-You can start a sync two ways:
+**One-time setup — let the extension capture X's request:** open `https://x.com/<your-username>/likes` once and **refresh** so `inject.js` patches `fetch` before X's first request. That alone captures the auth template — capture is silent, you don't have to click anything. (On the likes page a small **Sync** button also appears under the **Likes** tab.) After this, you never need the likes page again unless the capture goes stale.
 
-- **From the Finder tab (easiest):** open the extension and click **sync likes ↻** (in the header or the first-run dialog). It finds or opens your X likes tab in the background and runs the sync there. Leave that tab open while it paginates.
-- **From the X likes page:** open `https://x.com/<your-username>/likes` and **refresh once** so `inject.js` patches `fetch` before X's first request. The bottom-right floating panel shows `Request captured ✓` once it sees a real Likes call; click **Sync** there. The status line shows `Page N: +M (run +X, total Y)`.
+**Then sync from anywhere:**
+
+- **From the Finder tab (normal):** open the extension and click **sync likes ↻** (header or first-run dialog). The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop sync ⏹**. New tweets stream into the list as they're fetched.
+- **From the X likes page (fallback):** a small **Sync** button sits under the **Likes** tab (inside the "your likes are private" banner) if you prefer to run it there. While it runs, the button shows a live count and ends on `Synced N`.
+
+If a sync ever errors with an auth/HTTP 403 message, the captured template went stale — just reload your likes page once to recapture, then sync again.
 
 ### Browse & search
 
@@ -49,14 +54,14 @@ Re-running Sync is **incremental** — already-indexed tweets are skipped. The f
 
 - **Completeness:** X paginates likes server-side; very old likes may stop being returned after enough pages even with valid cursors. Run sync again on different days; new pagination windows sometimes open.
 - **Rate limits:** if X errors mid-sync, wait a few minutes and resume — progress is saved every page.
-- **API changes:** auth-capture is robust to header/hash changes (we replay what your browser already sent), but if X reshapes the GraphQL response, `parseLikesResponse` in `content.js` needs a small update.
+- **API changes:** auth-capture is robust to header/hash changes (we replay what your browser already sent), but if X reshapes the GraphQL response, `parseLikesResponse` in `feed-core.js` needs a small update.
 
 ## Files
 
 ```
 manifest.json     # MV3 manifest
 background.js     # Action click → open/focus feed.html tab
-content.js        # Inject bridge + sync orchestrator + sync panel + feed-driven sync messages
+content.js        # Inject bridge + capture + page-world sync + on-page Sync button (under the Likes tab)
 inject.js         # Page-world fetch/XHR patch + capture + replay bridge
 feed.html/css/js  # Full-page Finder UI (DOM + chrome.* layer)
 feed-core.js      # DOM-free, dependency-free core logic (UMD; shared by the UI and unit tests)

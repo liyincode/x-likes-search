@@ -13,6 +13,7 @@ async function installChromeMock(page, index = fixture.index) {
     window.__tabsCreated = [];
     window.__tabsQueried = [];
     window.__messagesSent = [];
+    window.__runtimeMessages = [];
     window.__removedKeys = [];
     window.__storageListeners = [];
     window.__downloads = [];
@@ -27,6 +28,14 @@ async function installChromeMock(page, index = fixture.index) {
     };
     window.__localStore = localStore;
     window.chrome = {
+      runtime: {
+        lastError: undefined,
+        sendMessage(msg, cb) {
+          window.__runtimeMessages.push(msg);
+          const res = window.__workerResponse || { ok: true, started: true };
+          if (cb) cb(res);
+        },
+      },
       storage: {
         local: {
           async get(keys) {
@@ -208,25 +217,43 @@ test("theme, history, filters, sorting, export, and storage refresh work", async
   await expect(page.locator("#sb-status")).toHaveText("5 liked · local only");
 });
 
-test("starts sync from the Finder page through an X likes tab", async ({ page }) => {
+test("starts and stops sync through the background worker", async ({ page }) => {
   await openFeed(page);
+
+  // Click → START_SYNC goes to the worker (no x.com tab involved).
   await page.locator("#open-likes").click();
   await expect(page.locator("#toast")).toHaveClass(/show/);
-  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({ url: "https://x.com/i/likes", active: false });
-  expect(await page.evaluate(() => window.__messagesSent.at(-1))).toEqual({
-    tabId: 42,
-    msg: { source: "xls-feed", type: "START_SYNC" },
+  expect(await page.evaluate(() => window.__runtimeMessages.at(-1))).toEqual({
+    source: "xls-feed",
+    type: "START_SYNC",
   });
 
+  // Worker reports progress via storage → status + button reflect it live.
   await page.evaluate(() => {
-    window.__queryTabs = [{ id: 99, url: "https://x.com/i/likes" }];
+    window.__localStore.x_likes_sync = { running: true, message: "Page 2: +30 (run +30)", total: 34 };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
   });
-  await page.locator("#show-onboard").click();
-  await page.locator("#ob-open").click();
-  expect(await page.evaluate(() => window.__messagesSent.at(-1))).toEqual({
-    tabId: 99,
-    msg: { source: "xls-feed", type: "START_SYNC" },
+  await expect(page.locator("#sb-status")).toContainText("Syncing…");
+  await expect(page.locator("#open-likes")).toHaveText("stop sync ⏹");
+
+  // Clicking while running sends STOP_SYNC.
+  await page.locator("#open-likes").click();
+  expect(await page.evaluate(() => window.__runtimeMessages.at(-1))).toEqual({
+    source: "xls-feed",
+    type: "STOP_SYNC",
   });
+
+  // Worker reports done → button returns to idle.
+  await page.evaluate(() => {
+    window.__localStore.x_likes_sync = { running: false, done: true, message: "Done. +30 (total 34)." };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
+  });
+  await expect(page.locator("#open-likes")).toHaveText("sync likes ↻");
+
+  // From a fresh worker (no captured template) START_SYNC surfaces an error.
+  await page.evaluate(() => { window.__workerResponse = { ok: false, error: "No captured request yet." }; });
+  await page.locator("#open-likes").click();
+  await expect(page.locator("#toast-txt")).toHaveText("No captured request yet.");
 });
 
 test("visual states match the Finder direction with strict thresholds", async ({ page }) => {

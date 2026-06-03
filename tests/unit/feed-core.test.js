@@ -46,6 +46,71 @@ test("search history dedupes and caps at six entries", () => {
   assert.deepEqual(Core.removeHistory(history, "six"), ["two", "seven", "five", "four", "three"]);
 });
 
+test("parseLikesResponse extracts tweets, stats, and the bottom cursor", () => {
+  const sample = {
+    data: {
+      user: {
+        result: {
+          timeline_v2: {
+            timeline: {
+              instructions: [
+                {
+                  type: "TimelineAddEntries",
+                  entries: [
+                    {
+                      entryId: "tweet-1",
+                      content: {
+                        entryType: "TimelineTimelineItem",
+                        itemContent: {
+                          itemType: "TimelineTweet",
+                          tweet_results: {
+                            result: {
+                              rest_id: "1",
+                              legacy: {
+                                full_text: "hello world",
+                                created_at: "Wed Jun 03 10:00:00 +0000 2026",
+                                favorite_count: 5,
+                                retweet_count: 2,
+                              },
+                              core: {
+                                user_results: {
+                                  result: {
+                                    legacy: { screen_name: "alice", name: "Alice", profile_image_url_https: "https://x/a.jpg" },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                    { entryId: "cursor-bottom", content: { entryType: "TimelineTimelineCursor", cursorType: "Bottom", value: "CURSOR123" } },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+  const { tweets, nextCursor } = Core.parseLikesResponse(sample);
+  assert.equal(nextCursor, "CURSOR123");
+  assert.equal(tweets.length, 1);
+  assert.equal(tweets[0].tweetId, "1");
+  assert.equal(tweets[0].text, "hello world");
+  assert.equal(tweets[0].author, "alice");
+  assert.equal(tweets[0].displayName, "Alice");
+  assert.equal(tweets[0].likes, 5);
+  assert.equal(tweets[0].reposts, 2);
+  assert.equal(tweets[0].url, "https://x.com/alice/status/1");
+});
+
+test("parseLikesResponse tolerates an empty or garbage body", () => {
+  assert.deepEqual(Core.parseLikesResponse({}), { tweets: [], nextCursor: null });
+  assert.deepEqual(Core.parseLikesResponse(null), { tweets: [], nextCursor: null });
+});
+
 test("relative dates are stable when now is fixed", () => {
   const now = new Date("2026-06-03T12:00:00Z");
   assert.equal(Core.relativeDate("2026-06-03T11:59:40Z", now), "now");

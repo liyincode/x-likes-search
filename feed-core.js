@@ -162,6 +162,76 @@
     return existing.filter((x) => x !== q);
   }
 
+  // Walk X's GraphQL Likes timeline `instructions`/`entries` to extract the
+  // tweets on this page plus the bottom pagination cursor. Single source of
+  // truth shared by content.js (page-world capture) and background.js (the
+  // service-worker sync). Defensive optional-chaining handles X reshaping its
+  // response (legacy vs core, note_tweet vs full_text). This is the most likely
+  // thing to need an update when extraction breaks — update it here only.
+  function parseLikesResponse(body) {
+    const tweets = [];
+    let nextCursor = null;
+
+    const timeline =
+      body?.data?.user?.result?.timeline_v2?.timeline ||
+      body?.data?.user?.result?.timeline?.timeline ||
+      null;
+    const instructions = timeline?.instructions || [];
+
+    for (const ins of instructions) {
+      if (ins.type === "TimelineReplaceEntry" && ins.entry) {
+        const c = ins.entry.content || {};
+        if (c.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
+          nextCursor = c.value;
+        }
+      }
+      const entries = ins.entries || [];
+      for (const entry of entries) {
+        const c = entry.content || {};
+        if (c.entryType === "TimelineTimelineItem" && c.itemContent?.itemType === "TimelineTweet") {
+          let res = c.itemContent.tweet_results?.result;
+          if (!res) continue;
+          if (res.__typename === "TweetWithVisibilityResults" && res.tweet) res = res.tweet;
+          const tweetId = res.rest_id || res.legacy?.id_str;
+          if (!tweetId) continue;
+          const text =
+            res.note_tweet?.note_tweet_results?.result?.text ||
+            res.legacy?.full_text ||
+            "";
+          const datetime = res.legacy?.created_at || null;
+          const userRes = res.core?.user_results?.result;
+          const author =
+            userRes?.legacy?.screen_name || userRes?.core?.screen_name || "";
+          const displayName =
+            userRes?.legacy?.name || userRes?.core?.name || "";
+          const avatar =
+            userRes?.legacy?.profile_image_url_https ||
+            userRes?.avatar?.image_url ||
+            "";
+          const likes = res.legacy?.favorite_count;
+          const reposts = res.legacy?.retweet_count;
+          tweets.push({
+            tweetId,
+            text,
+            datetime,
+            author,
+            displayName,
+            avatar,
+            url: `https://x.com/${author || "i"}/status/${tweetId}`,
+            capturedAt: Date.now(),
+            ...(Number.isFinite(likes) ? { likes } : {}),
+            ...(Number.isFinite(reposts) ? { reposts } : {}),
+          });
+        }
+        if (c.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
+          nextCursor = c.value;
+        }
+      }
+    }
+
+    return { tweets, nextCursor };
+  }
+
   return {
     escapeHTML,
     normalizeLike,
@@ -177,5 +247,6 @@
     fullDate,
     addHistory,
     removeHistory,
+    parseLikesResponse,
   };
 });

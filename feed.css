@@ -320,6 +320,14 @@ mark { background: var(--accent-dim); color: var(--mark-txt); border-radius: 3px
 .empty p { font-size: 13.5px; margin: 0; }
 .empty .q { color: var(--accent); }
 .empty code { background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.steps-guide { margin: 22px auto 0; max-width: 360px; text-align: left; display: grid; gap: 14px; }
+.steps-guide .step { display: flex; gap: 12px; align-items: flex-start; }
+.steps-guide .n { flex: none; width: 24px; height: 24px; border-radius: 7px; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.steps-guide .sb { font-weight: 600; font-size: 14px; color: var(--txt); }
+.steps-guide .ss { color: var(--txt-2); font-size: 13px; margin-top: 2px; }
+.steps-guide a { color: var(--accent); text-decoration: none; }
+.steps-guide a:hover { text-decoration: underline; }
+.steps-guide code { background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
 
 .statusbar {
   position: fixed;

@@ -1,8 +1,8 @@
 const STORAGE_KEY = "x_likes_index";
 const STATE_KEY = "x_likes_state";
+const SYNC_KEY = "x_likes_sync";
 const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
-const X_LIKES_URL = "https://x.com/i/likes";
 
 const Core = window.FeedCore;
 const $ = (s) => document.querySelector(s);
@@ -14,8 +14,6 @@ const els = {
   count: $("#mc"),
   status: $("#sb-status"),
   history: $("#history"),
-  author: $("#author"),
-  mediaOnly: $("#media-only"),
   sort: $("#sort"),
   theme: $("#theme-btn"),
   onboard: $("#onboard"),
@@ -25,13 +23,13 @@ const els = {
   obBar: $("#ob-bar"),
 };
 
-const state = { q: "", sort: "newest", mediaOnly: false, author: "all", active: -1 };
+const state = { q: "", sort: "newest", active: -1 };
 let allLikes = [];
 let view = [];
 let rawLikes = [];
 let toastTimer = null;
 let historyTimer = null;
-let syncButtonText = "";
+let syncState = {};
 
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
 const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a6.5 6.5 0 0 0 10 10z"/></svg>';
@@ -94,21 +92,41 @@ function initTheme() {
   applyTheme(saved === "light" ? "light" : "dark");
 }
 
-function updateAuthors() {
-  const selected = state.author;
-  els.author.innerHTML =
-    '<option value="all">all authors</option>' +
-    Core.authors(allLikes)
-      .map((a) => `<option value="${Core.escapeHTML(a.handle)}">@${Core.escapeHTML(a.handle)}</option>`)
-      .join("");
-  els.author.value = selected && [...els.author.options].some((o) => o.value === selected) ? selected : "all";
-  state.author = els.author.value;
-}
-
 function updateStatus() {
-  els.status.textContent = `${allLikes.length} liked · local only`;
+  if (syncState.running) {
+    els.status.textContent = `Syncing… ${allLikes.length} liked`;
+  } else if (syncState.error) {
+    els.status.textContent = syncState.error;
+  } else if (syncState.done && syncState.message) {
+    els.status.textContent = `${allLikes.length} liked · ${syncState.message}`;
+  } else {
+    els.status.textContent = `${allLikes.length} liked · local only`;
+  }
   els.obTotal.textContent = String(allLikes.length);
   els.obBar.style.width = allLikes.length ? "100%" : "0";
+  updateSyncButtons();
+}
+
+function updateSyncButtons() {
+  // A page-driven sync (started from the X tab's panel) can't be stopped from
+  // here, so keep the button as "sync" instead of showing a dead "stop".
+  const remote = syncState.running && syncState.source === "page";
+  const label = syncState.running && !remote ? "stop sync ⏹" : "sync likes ↻";
+  ["#open-likes", "#ob-open"].forEach((sel) => {
+    const b = $(sel);
+    if (b) b.textContent = label;
+  });
+  // Empty state (nothing indexed yet): keep the UI minimal — only the theme
+  // toggle and the centered two-step guide. Hide the sync button, export, and
+  // the sort filters until there's data to act on.
+  const empty = allLikes.length === 0;
+  const setHidden = (sel, hidden) => {
+    const el = $(sel);
+    if (el) el.style.display = hidden ? "none" : "";
+  };
+  setHidden("#open-likes", empty);
+  setHidden("#export", empty);
+  setHidden(".filters", empty);
 }
 
 function updateCount(baseLen) {
@@ -192,77 +210,49 @@ function openTweet(t) {
   chrome.tabs.create({ url: t.url, active: false });
 }
 
-function tabsQuery(query) {
-  return new Promise((resolve) => chrome.tabs.query(query, resolve));
-}
-
-function tabsCreate(args) {
-  return new Promise((resolve) => chrome.tabs.create(args, resolve));
-}
-
-function tabsSendMessage(tabId, msg) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, msg, (res) => {
-      const err = chrome.runtime?.lastError;
-      if (err) reject(new Error(err.message));
-      else resolve(res);
-    });
-  });
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function sendMessageWithRetry(tabId, msg) {
-  let lastError = null;
-  for (let i = 0; i < 30; i += 1) {
+// The sync runs in the background service worker (no x.com tab needed). We just
+// send it a message and let it report progress through chrome.storage, which we
+// watch via storage.onChanged.
+function sendToWorker(msg) {
+  return new Promise((resolve) => {
     try {
-      return await tabsSendMessage(tabId, msg);
-    } catch (e) {
-      lastError = e;
-      await wait(500);
-    }
-  }
-  throw lastError || new Error("Could not reach the X likes tab.");
-}
-
-async function findOrCreateLikesTab() {
-  const tabs = await tabsQuery({
-    url: [
-      "https://x.com/i/likes*",
-      "https://x.com/*/likes*",
-      "https://twitter.com/i/likes*",
-      "https://twitter.com/*/likes*",
-    ],
-  });
-  const existing = tabs.find((tab) => {
-    if (!tab.id || !tab.url) return false;
-    try {
-      return /\/(?:i\/likes|[^/]+\/likes)/.test(new URL(tab.url).pathname);
+      chrome.runtime.sendMessage({ source: "xls-feed", ...msg }, (res) => {
+        void chrome.runtime?.lastError;
+        resolve(res);
+      });
     } catch {
-      return false;
+      resolve(null);
     }
   });
-  if (existing) return existing;
-  return tabsCreate({ url: X_LIKES_URL, active: false });
 }
 
-async function startSyncFromFeed(button) {
-  syncButtonText = syncButtonText || button.textContent;
-  button.disabled = true;
-  button.textContent = "syncing…";
-  try {
-    const tab = await findOrCreateLikesTab();
-    const result = await sendMessageWithRetry(tab.id, { source: "xls-feed", type: "START_SYNC" });
-    if (!result?.ok) throw new Error(result?.error || "Could not start sync.");
-    showToast("Sync started in X tab");
-  } catch (e) {
-    showToast(e.message || "Could not start sync");
-  } finally {
-    button.disabled = false;
-    button.textContent = syncButtonText;
+async function toggleSync() {
+  if (syncState.running) {
+    if (syncState.source === "page") {
+      showToast("Syncing on your X tab — click Stop there");
+      return;
+    }
+    await sendToWorker({ type: "STOP_SYNC" });
+    showToast("Stopping sync…");
+    return;
   }
+  const res = await sendToWorker({ type: "START_SYNC" });
+  if (!res) {
+    showToast("Could not reach the extension worker");
+    return;
+  }
+  if (!res.ok) {
+    showToast(res.error || "Could not start sync");
+    return;
+  }
+  showToast(res.alreadyRunning ? "Sync already running" : "Sync started");
+}
+
+async function refreshSyncState() {
+  const res = await sendToWorker({ type: "SYNC_STATUS" });
+  syncState = (res && res.state) || {};
+  if (res) syncState.running = Boolean(res.running);
+  updateStatus();
 }
 
 function copyLink(t, btn) {
@@ -307,10 +297,18 @@ function render() {
 
   if (!view.length) {
     els.results.innerHTML = "";
-    const body = allLikes.length
-      ? `<div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p>`
-      : `<div class="big">No likes indexed yet</div><p>Open <code>https://x.com/&lt;your-username&gt;/likes</code>, click <b>Sync</b>, then search here.</p>`;
-    els.empty.innerHTML = `<div class="empty">${body}</div>`;
+    if (allLikes.length) {
+      els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+    } else {
+      els.empty.innerHTML = `
+        <div class="empty">
+          <div class="big">No likes indexed yet</div>
+          <div class="steps-guide">
+            <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes page</div><div class="ss">Go to <a href="https://x.com" target="_blank" rel="noreferrer">x.com</a> → Profile → Likes.</div></div></div>
+            <div class="step"><div class="n">2</div><div><div class="sb">Click Sync</div><div class="ss">Use the panel at the bottom-right of that page.</div></div></div>
+          </div>
+        </div>`;
+    }
     return;
   }
 
@@ -333,7 +331,6 @@ async function load() {
   const index = data[STORAGE_KEY] || {};
   rawLikes = Object.values(index);
   allLikes = rawLikes.map(Core.normalizeLike);
-  updateAuthors();
   render();
 }
 
@@ -439,25 +436,10 @@ function wireEvents() {
     render();
   });
 
-  els.mediaOnly.addEventListener("click", () => {
-    state.mediaOnly = !state.mediaOnly;
-    els.mediaOnly.classList.toggle("on", state.mediaOnly);
-    els.mediaOnly.setAttribute("aria-pressed", String(state.mediaOnly));
-    state.active = -1;
-    render();
-  });
-
-  els.author.addEventListener("change", () => {
-    state.author = els.author.value;
-    state.active = -1;
-    render();
-  });
-
-  $("#open-likes").addEventListener("click", (e) => startSyncFromFeed(e.currentTarget));
-  $("#ob-open").addEventListener("click", (e) => startSyncFromFeed(e.currentTarget));
+  $("#open-likes").addEventListener("click", toggleSync);
+  $("#ob-open").addEventListener("click", toggleSync);
   $("#export").addEventListener("click", exportLikes);
   $("#clear").addEventListener("click", clearCache);
-  $("#show-onboard").addEventListener("click", () => els.onboard.classList.add("show"));
   $("#ob-close").addEventListener("click", () => els.onboard.classList.remove("show"));
   els.onboard.addEventListener("click", (e) => {
     if (e.target === els.onboard) els.onboard.classList.remove("show");
@@ -465,6 +447,13 @@ function wireEvents() {
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes[SYNC_KEY]) {
+      const prevRunning = syncState.running;
+      syncState = changes[SYNC_KEY].newValue || {};
+      updateStatus();
+      if (syncState.done && syncState.error) showToast(syncState.error);
+      else if (syncState.done && prevRunning) showToast(syncState.message || "Sync finished");
+    }
     if (changes[STORAGE_KEY] || changes[STATE_KEY]) load();
   });
 }
@@ -472,5 +461,6 @@ function wireEvents() {
 initTheme();
 wireEvents();
 load();
+refreshSyncState();
 
 window.__feedApp = { state, get allLikes() { return allLikes; }, get view() { return view; }, load, render };

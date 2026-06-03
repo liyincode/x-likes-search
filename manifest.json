@@ -5,8 +5,20 @@
   "description": "Index your X (Twitter) likes locally via GraphQL capture-and-replay, then browse them in an X-styled feed with instant keyword search.",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
   "action": {
-    "default_title": "X Likes Search"
+    "default_title": "X Likes Search",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
@@ -14,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["content.js"],
+      "js": ["feed-core.js", "content.js"],
       "run_at": "document_start"
     }
   ],
