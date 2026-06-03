@@ -404,7 +404,9 @@ async function refreshSyncState() {
   const res = await sendToWorker({ type: "SYNC_STATUS" });
   const stored = (res && res.state) || {};
   syncState = { ...stored };
-  syncState.running = Boolean(stored.running) || Boolean(res && res.running);
+  // Page sync only exists in storage; worker sync follows the service worker flag.
+  syncState.running =
+    stored.source === "page" ? Boolean(stored.running) : Boolean(res && res.running);
   updateStatus();
 }
 

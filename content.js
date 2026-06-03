@@ -193,6 +193,7 @@
     let pages = 0;
     let cursor = null;
     let consecutiveEmpty = 0;
+    let reachedEnd = false;
 
     setStatus("Starting sync…");
     setFabCount(totalCount); // show the cached total right away, then climb
@@ -236,16 +237,26 @@
       setFabCount(totalCount);
       setStatus(`Syncing… ${totalCount} liked (+${added} this run)`);
 
-      if (!nextCursor) break;
-      if (nextCursor === cursor) break;
+      if (!nextCursor) {
+        reachedEnd = true;
+        break;
+      }
+      if (nextCursor === cursor) {
+        reachedEnd = true;
+        break;
+      }
       // If we keep getting only known tweets, assume we've caught up.
-      if (consecutiveEmpty >= 3) break;
+      if (consecutiveEmpty >= 3) {
+        reachedEnd = true;
+        break;
+      }
       cursor = nextCursor;
 
       await sleep(700); // be polite
     }
 
-    await setState({ lastSyncAt: Date.now(), total: totalCount });
+    const completed = reachedEnd && !stopRequested;
+    await setState({ lastSyncAt: Date.now(), total: totalCount, completed });
     const finalStatus = stopRequested
       ? `Stopped — ${totalCount} liked (+${added})`
       : `Done — ${totalCount} liked (+${added})`;
@@ -253,7 +264,12 @@
     await setSyncState({
       running: false,
       done: true,
-      message: stopRequested ? "Stopped." : "Done.",
+      complete: completed,
+      message: stopRequested
+        ? "Stopped."
+        : completed
+        ? `Done. +${added} (total ${totalCount}).`
+        : "Paused.",
     });
     syncing = false;
     return { ok: true, total: totalCount, added, stopped: stopRequested };
