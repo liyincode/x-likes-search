@@ -113,4 +113,6 @@ test("relative dates are stable when now is fixed", () => {
   assert.equal(Core.relativeDate("2026-06-03T10:00:00Z", now), "2h");
   assert.equal(Core.relativeDate("2026-06-01T12:00:00Z", now), "2d");
   assert.equal(Core.relativeDate("2026-05-20T12:00:00Z", now), "May 20");
+  assert.equal(Core.relativeDate("2025-05-20T12:00:00Z", now), "May 20, 2025");
+  assert.equal(Core.relativeDate("2024-06-01T12:00:00Z", now), "Jun 1, 2024");
 });

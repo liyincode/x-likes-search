@@ -171,10 +171,15 @@
     };
   }
 
-  function absDate(iso) {
+  function absDate(iso, now = new Date()) {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    return `${MON[d.getMonth()]} ${d.getDate()}`;
+    const nowD = now instanceof Date ? now : new Date(now);
+    const label = `${MON[d.getMonth()]} ${d.getDate()}`;
+    if (!Number.isNaN(nowD.getTime()) && d.getFullYear() !== nowD.getFullYear()) {
+      return `${label}, ${d.getFullYear()}`;
+    }
+    return label;
   }
 
   function relativeDate(iso, now = new Date()) {
@@ -189,7 +194,7 @@
     if (h < 24) return `${h}h`;
     const d = Math.floor(h / 24);
     if (d < 7) return `${d}d`;
-    return absDate(iso);
+    return absDate(iso, now);
   }
 
   function fullDate(iso) {

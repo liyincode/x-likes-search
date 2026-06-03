@@ -225,7 +225,7 @@ function rowHTML(t, i) {
           </div>
         </div>
       </div>
-      <div class="when">${Core.relativeDate(t.date, appNow())}</div>
+      <div class="when" title="${Core.escapeHTML(Core.fullDate(t.date))}">${Core.relativeDate(t.date, appNow())}</div>
     </div>`;
 }
 
