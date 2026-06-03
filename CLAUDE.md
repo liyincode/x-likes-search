@@ -6,14 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Manifest V3 Chrome extension that indexes your X (Twitter) likes locally and lets you browse/search them in an X-styled feed. It works by **capturing** the GraphQL request X's own page makes to load your Likes timeline, then **replaying** that request with successive pagination cursors. Nothing leaves the browser; there is no server.
 
-## Dev workflow (no build, no tests, no package manager)
+## Dev workflow (no build step; tests are optional tooling)
 
-This is plain static JS/HTML/CSS loaded as an unpacked extension. There is no build step, bundler, lint config, or test suite — do not look for `package.json` or npm scripts.
+The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is no build step or bundler**, and nothing is compiled before loading. There IS now a `package.json`, but it only carries dev-only test tooling (Playwright, pixelmatch, pngjs) and `npm` scripts; the extension never imports node_modules and ships the source files as-is.
 
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
 - **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
-- **After editing `feed.html` / `feed.css` / `feed.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
-- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the bottom-right sync panel, then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
+- **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
+- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the bottom-right sync panel (or click **sync likes** in the Finder tab), then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
+
+### Tests
+
+- `npm run test:unit` — `node:test` over `feed-core.js` logic (no browser, no install of browsers needed).
+- `npm run test:visual` — Playwright: mocks `chrome.*`, exercises interactions, and pixel-diffs the implementation against `design/x-likes-search/Likes Finder.html`. Requires `npm install` (+ Playwright's chromium).
+- `npm test` — both. Snapshots live in `tests/visual/feed.spec.js-snapshots/`; the `design/` folder is the visual reference and is required by the visual suite.
+- **Put testable logic in `feed-core.js`, not `feed.js`** — `feed-core.js` is DOM-free precisely so it can be unit-tested under Node. `feed.js` should stay a thin DOM/`chrome.*` binding layer.
 
 ## Architecture: three execution worlds
 
@@ -25,18 +32,23 @@ The hard part of this codebase is that code runs in three isolated JavaScript co
 
 2. **Content-script world — `content.js`** (runs at `document_start` on x.com/twitter.com). Isolated JS context but has `chrome.storage`. It injects `inject.js`, owns the page↔storage bridge, runs the pagination loop (`syncLikes`), and renders the bottom-right sync panel on `/likes` pages.
 
-3. **Extension page — `feed.html` + `feed.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. Pure read-and-render UI over stored data.
+3. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that calls into it to read stored data and render the Finder UI. It can also **drive a sync remotely**: it finds-or-opens the x.com likes tab and messages the content script (see protocol below).
 
-### Message protocol (`window.postMessage`)
+### Message protocols
 
-`content.js` ⇄ `inject.js` use a tagged-envelope protocol. Keep these constants in sync across both files:
-- `source: "xls"` — page world → content script: `TEMPLATE_CAPTURED` (captured request), `PAGE_RESULT` (replay response, correlated by `id`).
-- `source: "xls-cmd"` — content script → page world: `FETCH_PAGE` (replay this URL with these headers).
+Two separate channels — keep the string constants in sync across files:
+
+**`window.postMessage`** — `content.js` ⇄ `inject.js` (page world ↔ content script), tagged-envelope:
+- `source: "xls"` — page → content: `TEMPLATE_CAPTURED` (captured request), `PAGE_RESULT` (replay response, correlated by `id`).
+- `source: "xls-cmd"` — content → page: `FETCH_PAGE` (replay this URL with these headers).
+
+**`chrome.runtime` / `chrome.tabs.sendMessage`** — `feed.js` → `content.js` (Finder tab → content script), `source: "xls-feed"`:
+- `PING` (probe: is this a likes page / is a template captured), `START_SYNC` (run `syncLikes`, replies with `{ ok, total, added, stopped }`), `STOP_SYNC`. `feed.js` uses `sendMessageWithRetry` because the freshly-opened likes tab may not have its content script ready yet. `syncLikes` now also `await`s `waitForTemplate()` so a feed-initiated sync works even before X has fired its first Likes request.
 
 ### Storage schema (`chrome.storage.local`)
 
 Three keys, written by `content.js` and read by `feed.js`. The key-name string constants are **duplicated** in both files and must stay identical:
-- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`.
+- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts` counts when X provides them. `feed-core.js`'s `normalizeLike` maps these raw records into the Finder's view model (`{ author: {name, handle, hue, avatar}, date, stats, … }`) — keep that mapping in sync with what `content.js` writes.
 - `x_likes_state` — `{ lastSyncAt, total }`.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
 

@@ -28,14 +28,17 @@ jobs:
 
       - name: Package extension
         run: |
-          zip -j "x-likes-search-${GITHUB_REF_NAME}.zip" \
+          zip -r "x-likes-search-${GITHUB_REF_NAME}.zip" \
             manifest.json \
             background.js \
             content.js \
             inject.js \
             feed.html \
             feed.css \
-            feed.js
+            feed.js \
+            feed-core.js \
+            assets/fonts \
+            -x '*/.DS_Store'
 
       - name: Create release
         uses: softprops/action-gh-release@v3
