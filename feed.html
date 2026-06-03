@@ -8,16 +8,15 @@
   </head>
   <body>
     <div class="shell">
-      <div class="feed-scroll" id="feed-scroll">
       <div class="bar">
         <div class="logo"><b>X Likes</b><span class="t">Search</span></div>
         <div class="grow"></div>
         <button class="ico-btn square" id="theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
         <button class="ico-btn" id="export">export</button>
-        <button class="ico-btn accent" id="open-likes">sync likes ↻</button>
+        <button class="ico-btn accent" id="open-likes">sync</button>
       </div>
 
-      <div class="sticky-chrome">
+      <div class="search-bar">
         <div class="cmd-wrap">
           <div class="cmd">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -29,18 +28,19 @@
           </div>
           <div class="history" id="history"></div>
         </div>
+      </div>
 
-        <div class="filters">
-          <div class="sortgrp" id="sort" aria-label="Sort results">
-            <button data-sort="newest" aria-pressed="true">newest</button>
-            <button data-sort="oldest" aria-pressed="false">oldest</button>
-            <button data-sort="author" aria-pressed="false">author</button>
-          </div>
+      <div class="filters">
+        <div class="sortgrp" id="sort" aria-label="Sort results">
+          <button data-sort="newest" aria-pressed="true">newest</button>
+          <button data-sort="oldest" aria-pressed="false">oldest</button>
+          <button data-sort="author" aria-pressed="false">author</button>
         </div>
       </div>
 
-      <div class="results" id="results"></div>
-      <div id="empty"></div>
+      <div class="feed-scroll" id="feed-scroll">
+        <div class="results" id="results"></div>
+        <div id="empty"></div>
       </div>
     </div>
 
@@ -54,27 +54,6 @@
           <span><span class="key">⌘</span><span class="key">↵</span> open</span>
           <span><span class="key">esc</span> clear</span>
         </span>
-      </div>
-    </div>
-
-    <div class="onboard" id="onboard">
-      <div class="ob">
-        <h2>Index your likes</h2>
-        <p class="sub">Runs locally in your browser. No account, no upload, no server.</p>
-        <div class="steps">
-          <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes tab</div><div class="ss">We capture the Likes request from X in your browser.</div></div></div>
-          <div class="step"><div class="n">2</div><div><div class="sb">Click Sync on X</div><div class="ss">The extension replays pages locally with your browser session.</div></div></div>
-          <div class="step"><div class="n">3</div><div><div class="sb">Search instantly</div><div class="ss">Type here, jump with the keyboard, done.</div></div></div>
-        </div>
-        <div class="prog">
-          <div class="prog-top"><span>indexed locally</span><span><b id="ob-total">0</b> liked</span></div>
-          <div class="pbar"><i id="ob-bar"></i></div>
-        </div>
-        <div class="ob-act">
-          <button class="ico-btn accent" id="ob-open">sync likes ↻</button>
-          <button class="ico-btn" id="ob-close">later</button>
-          <button class="ico-btn danger" id="clear">clear cache</button>
-        </div>
       </div>
     </div>
 

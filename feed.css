@@ -64,7 +64,7 @@ html[data-theme="dark"] {
   --mark-txt: oklch(0.88 0.1 262);
   --glow: radial-gradient(900px 500px at 50% -8%, oklch(0.24 0.04 268), transparent 70%);
   --shadow: 0 24px 60px -30px oklch(0 0 0 / 0.8);
-  --sticky-surface: oklch(0.2 0.016 268 / 0.48);
+  --sticky-surface: oklch(0.2 0.016 268 / 0.66);
   --sticky-ring: oklch(0.55 0.02 268 / 0.22);
   --sticky-shadow: 0 14px 32px -12px oklch(0 0 0 / 0.5), 0 1px 0 oklch(1 0 0 / 0.05) inset;
   --sticky-fade: linear-gradient(to bottom, oklch(0.18 0.016 268 / 0.35), transparent);
@@ -86,7 +86,7 @@ html[data-theme="light"] {
   --mark-txt: oklch(0.4 0.16 264);
   --glow: radial-gradient(900px 500px at 50% -8%, oklch(0.93 0.03 268), transparent 70%);
   --shadow: 0 24px 50px -32px oklch(0.4 0.04 268 / 0.45);
-  --sticky-surface: oklch(0.99 0.004 268 / 0.55);
+  --sticky-surface: oklch(0.99 0.004 268 / 0.74);
   --sticky-ring: oklch(1 0 0 / 0.45);
   --sticky-shadow: 0 14px 30px -14px oklch(0.35 0.04 268 / 0.12), 0 1px 0 oklch(1 0 0 / 0.65) inset;
   --sticky-fade: linear-gradient(to bottom, oklch(0.98 0.005 268 / 0.4), transparent);
@@ -133,10 +133,29 @@ body {
 .feed-scroll {
   flex: 1;
   min-height: 0;
+  position: relative;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
+  /* Soften the scroll edges so rows melt into the page instead of hard-clipping
+     against the fixed chrome above and the status bar below. */
+  --edge-top: 16px;
+  --edge-bottom: 22px;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--edge-top),
+    #000 calc(100% - var(--edge-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--edge-top),
+    #000 calc(100% - var(--edge-bottom)),
+    transparent 100%
+  );
 }
 .feed-scroll::-webkit-scrollbar {
   width: 6px;
@@ -185,52 +204,10 @@ body {
 .ico-btn.square { padding: 7px; width: 32px; height: 32px; justify-content: center; }
 .ico-btn svg { display: block; }
 
-/* Pin search + sort. Frosted scrim — rounded to match .cmd; .cmd stays the search card. */
-.sticky-chrome {
-  position: sticky;
-  top: var(--sticky-chrome-top);
-  z-index: 25;
+/* Search + filters live in the fixed top chrome (outside .feed-scroll), so they
+   never move and the search box can't jump — only .results scrolls. */
+.search-bar {
   margin: 0 2px 6px;
-  padding: 0 0 10px;
-  overflow: visible;
-}
-.sticky-chrome::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: -8px;
-  left: 0;
-  right: 0;
-  bottom: 4px;
-  border-radius: 16px;
-  border: 1px solid var(--sticky-ring);
-  background: linear-gradient(
-    to bottom,
-    var(--sticky-surface) 0%,
-    oklch(0.2 0.016 268 / 0.28) 78%,
-    oklch(0.2 0.016 268 / 0.06) 100%
-  );
-  backdrop-filter: blur(28px) saturate(1.35);
-  -webkit-backdrop-filter: blur(28px) saturate(1.35);
-  box-shadow: var(--sticky-shadow);
-  pointer-events: none;
-}
-html[data-theme="light"] .sticky-chrome::before {
-  background: linear-gradient(
-    to bottom,
-    var(--sticky-surface) 0%,
-    oklch(0.99 0.004 268 / 0.32) 78%,
-    oklch(0.99 0.004 268 / 0.06) 100%
-  );
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sticky-chrome::before {
-    background: linear-gradient(
-      to bottom,
-      color-mix(in oklch, var(--panel) 88%, transparent),
-      transparent
-    );
-  }
 }
 
 .cmd-wrap { position: relative; }
@@ -304,7 +281,7 @@ html[data-theme="light"] .sticky-chrome::before {
 .h-item .x { margin-left: auto; color: var(--txt-3); font-family: var(--mono); font-size: 11px; opacity: 0; }
 .h-item:hover .x { opacity: 1; }
 
-.filters { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin: 16px 2px 6px; flex-wrap: wrap; }
+.filters { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin: 8px 2px 6px; flex-wrap: wrap; }
 .chip {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -494,55 +471,6 @@ mark { background: var(--accent-dim); color: var(--mark-txt); border-radius: 3px
 .sb-hints { display: flex; gap: 15px; }
 .sb-hints span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .key { background: var(--panel); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; color: var(--txt-2); font-size: 10.5px; min-width: 16px; text-align: center; display: inline-block; }
-
-.onboard {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: color-mix(in oklch, var(--bg) 55%, transparent);
-  backdrop-filter: blur(10px);
-  display: none;
-  place-items: center;
-  padding: 24px;
-}
-.onboard.show { display: grid; }
-.ob {
-  background: linear-gradient(var(--panel), var(--bg-2));
-  border: 1px solid var(--line-2);
-  border-radius: 18px;
-  max-width: 500px;
-  width: 100%;
-  padding: 36px 36px 30px;
-  box-shadow: var(--shadow);
-}
-.ob h2 { font-family: var(--disp); font-weight: 600; font-size: 25px; margin: 0 0 8px; }
-.ob .sub { color: var(--txt-2); font-size: 14px; margin: 0 0 26px; }
-.ob .steps { display: grid; gap: 13px; margin-bottom: 24px; }
-.ob .step { display: flex; gap: 12px; align-items: flex-start; }
-.ob .n {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  flex: none;
-  background: var(--accent-dim);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  display: grid;
-  place-items: center;
-}
-.ob .sb { font-weight: 600; font-size: 14px; }
-.ob .ss { color: var(--txt-2); font-size: 13px; }
-.ob .prog { background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; margin-bottom: 22px; }
-.ob .prog-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; color: var(--txt-2); margin-bottom: 9px; }
-.ob .prog-top b { color: var(--accent); }
-.ob .pbar { height: 6px; background: var(--line); border-radius: 100px; overflow: hidden; }
-.ob .pbar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-.ob-act { display: flex; gap: 10px; }
-.ob-act #ob-open { flex: 1; justify-content: center; padding: 10px; }
-.ob-act #ob-close, .ob-act #clear { padding: 10px 14px; }
 
 .toast {
   position: fixed;

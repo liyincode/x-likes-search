@@ -18,11 +18,8 @@ const els = {
   history: $("#history"),
   sort: $("#sort"),
   theme: $("#theme-btn"),
-  onboard: $("#onboard"),
   toast: $("#toast"),
   toastText: $("#toast-txt"),
-  obTotal: $("#ob-total"),
-  obBar: $("#ob-bar"),
 };
 
 const state = { q: "", sort: "newest", author: "all", mediaOnly: false, active: -1 };
@@ -134,8 +131,6 @@ function updateStatus() {
   } else {
     els.status.textContent = `${allLikes.length} liked · local only`;
   }
-  els.obTotal.textContent = String(allLikes.length);
-  els.obBar.style.width = allLikes.length ? "100%" : "0";
   const sbStatus = els.status.closest(".sb-status");
   if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(syncState.running));
   updateSyncButtons();
@@ -143,11 +138,8 @@ function updateStatus() {
 
 function updateSyncButtons() {
   const remote = syncState.running && syncState.source === "page";
-  const label = syncState.running && !remote ? "stop sync ⏹" : "sync likes ↻";
-  ["#open-likes", "#ob-open"].forEach((sel) => {
-    const b = $(sel);
-    if (b) b.textContent = label;
-  });
+  const btn = $("#open-likes");
+  if (btn) btn.textContent = syncState.running && !remote ? "stop" : "sync";
   const empty = allLikes.length === 0;
   const setHidden = (sel, hidden) => {
     const el = $(sel);
@@ -489,13 +481,6 @@ function exportLikes() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function clearCache() {
-  if (!confirm("Clear all cached likes? This does not unlike anything on X.")) return;
-  await chrome.storage.local.remove([STORAGE_KEY, STATE_KEY]);
-  await load();
-  showToast("Local cache cleared");
-}
-
 function wireEvents() {
   els.theme.addEventListener("click", () => {
     const cur = document.documentElement.getAttribute("data-theme");
@@ -586,13 +571,7 @@ function wireEvents() {
   });
 
   $("#open-likes").addEventListener("click", toggleSync);
-  $("#ob-open").addEventListener("click", toggleSync);
   $("#export").addEventListener("click", exportLikes);
-  $("#clear").addEventListener("click", clearCache);
-  $("#ob-close").addEventListener("click", () => els.onboard.classList.remove("show"));
-  els.onboard.addEventListener("click", (e) => {
-    if (e.target === els.onboard) els.onboard.classList.remove("show");
-  });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;

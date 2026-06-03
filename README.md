@@ -29,7 +29,7 @@ No server, no manual auth, nothing leaves your browser.
 
 **Then sync from anywhere:**
 
-- **From the X Likes Search tab (normal):** open the extension and click **sync likes ↻** (header or first-run dialog). The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop sync ⏹**. New tweets stream into the list as they're fetched.
+- **From the X Likes Search tab (normal):** open the extension and click **sync** in the header. The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop**. New tweets stream into the list as they're fetched.
 - **From the X likes page (fallback):** a small **Sync** button sits under the **Likes** tab (inside the "your likes are private" banner) if you prefer to run it there. While it runs, the button shows a live count and ends on `Synced N`.
 
 If a sync ever errors with an auth/HTTP 403 message, the captured template went stale — just reload your likes page once to recapture, then sync again.
@@ -44,7 +44,7 @@ If a sync ever errors with an auth/HTTP 403 message, the captured template went 
 - **Filters & sort:** toggle `media only`, pick an author, and sort by newest / oldest / author.
 - **Theme:** dark/light toggle in the header (remembered across sessions).
 - **History:** recent searches appear under the empty search box; click to re-run, ✕ to remove.
-- **export** (JSON download) / **clear cache** (in the first-run dialog) for data management.
+- **export** (JSON download) for data management.
 
 ### Re-sync later
 

@@ -168,10 +168,10 @@ test("searches, navigates, opens, clears, and copies", async ({ page, browserNam
   await expect(page.locator("#q")).toHaveValue("");
   await expect(page.locator(".row")).toHaveCount(4);
 
-  await page.evaluate(() => document.getElementById("onboard").classList.add("show"));
-  await expect(page.locator("#onboard")).toHaveClass(/show/);
-  await page.locator("#clear").click();
-  expect(await page.evaluate(() => window.__removedKeys)).toEqual(["x_likes_index", "x_likes_state"]);
+  await page.evaluate(async () => {
+    await chrome.storage.local.remove(["x_likes_index", "x_likes_state"]);
+    window.__storageListeners.forEach((fn) => fn({ x_likes_index: {}, x_likes_state: {} }, "local"));
+  });
   await expect(page.locator(".empty .big")).toHaveText("No likes indexed yet");
   expect(browserName).toBe("chromium");
 });
@@ -231,7 +231,7 @@ test("starts and stops sync through the background worker", async ({ page }) => 
     window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
   });
   await expect(page.locator("#sb-status")).toContainText("Syncing…");
-  await expect(page.locator("#open-likes")).toHaveText("stop sync ⏹");
+  await expect(page.locator("#open-likes")).toHaveText("stop");
 
   // Clicking while running sends STOP_SYNC.
   await page.locator("#open-likes").click();
@@ -245,7 +245,7 @@ test("starts and stops sync through the background worker", async ({ page }) => 
     window.__localStore.x_likes_sync = { running: false, done: true, message: "Done. +30 (total 34)." };
     window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
   });
-  await expect(page.locator("#open-likes")).toHaveText("sync likes ↻");
+  await expect(page.locator("#open-likes")).toHaveText("sync");
 
   // From a fresh worker (no captured template) START_SYNC surfaces an error.
   await page.evaluate(() => { window.__workerResponse = { ok: false, error: "No captured request yet." }; });
@@ -261,8 +261,6 @@ test("visual states match the Finder direction with strict thresholds", async ({
   await expect(page).toHaveScreenshot("finder-search.png", { maxDiffPixelRatio: 0.02 });
   await page.locator("#theme-btn").click();
   await expect(page).toHaveScreenshot("finder-light.png", { maxDiffPixelRatio: 0.02 });
-  await page.evaluate(() => document.getElementById("onboard").classList.add("show"));
-  await expect(page).toHaveScreenshot("finder-onboard.png", { maxDiffPixelRatio: 0.02 });
 });
 
 test("implementation screenshots closely match the Finder reference", async ({ browser }) => {
