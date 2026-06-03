@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify tag matches manifest version
         run: |
@@ -38,7 +38,7 @@ jobs:
             feed.js
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: x-likes-search-${{ github.ref_name }}.zip
           generate_release_notes: true
