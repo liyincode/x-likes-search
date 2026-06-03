@@ -56,3 +56,7 @@ content.js        # Inject bridge + sync orchestrator + sync panel on /likes pag
 inject.js         # Page-world fetch/XHR patch + capture + replay bridge
 feed.html/css/js  # Full-page X-styled likes browser & search
 ```
+
+## License
+
+[MIT](LICENSE) © Young
