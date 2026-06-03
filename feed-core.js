@@ -4,6 +4,10 @@
 })(typeof globalThis !== "undefined" ? globalThis : window, function () {
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+  // Virtual list row heights (px) — tuned to match .row / .row.active in feed.css.
+  const ROW_COLLAPSED = 56;
+  const ROW_ACTIVE_EXPANDED = 128;
+
   function escapeHTML(s) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -51,6 +55,7 @@
         reposts,
       };
     }
+    out.searchHay = `${out.text} ${name} ${handle}`.toLowerCase();
     return out;
   }
 
@@ -63,8 +68,66 @@
   function matches(t, q) {
     const terms = words(q);
     if (!terms.length) return true;
-    const hay = `${t.text || ""} ${t.author?.name || ""} ${t.author?.handle || ""}`.toLowerCase();
+    const hay =
+      t.searchHay ||
+      `${t.text || ""} ${t.author?.name || ""} ${t.author?.handle || ""}`.toLowerCase();
     return terms.every((term) => hay.includes(term));
+  }
+
+  function countMatches(list, q) {
+    const terms = words(q);
+    if (!terms.length) return list.length;
+    let n = 0;
+    for (let i = 0; i < list.length; i += 1) {
+      if (matches(list[i], q)) n += 1;
+    }
+    return n;
+  }
+
+  function buildRowOffsets(count, activeIndex, collapsed = ROW_COLLAPSED, expanded = ROW_ACTIVE_EXPANDED) {
+    const tops = new Array(count);
+    const heights = new Array(count);
+    let y = 0;
+    for (let i = 0; i < count; i += 1) {
+      tops[i] = y;
+      const h = activeIndex >= 0 && i === activeIndex ? expanded : collapsed;
+      heights[i] = h;
+      y += h;
+    }
+    return { tops, heights, totalHeight: y };
+  }
+
+  function visibleRange(scrollTop, viewportHeight, layout, overscan = 5) {
+    const { tops, heights, totalHeight } = layout;
+    const count = tops.length;
+    if (!count) return { start: 0, end: -1, totalHeight: 0 };
+
+    let start = 0;
+    let lo = 0;
+    let hi = count - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (tops[mid] + heights[mid] > scrollTop) {
+        start = mid;
+        hi = mid - 1;
+      } else lo = mid + 1;
+    }
+    start = Math.max(0, start - overscan);
+
+    const bottom = scrollTop + viewportHeight;
+    let end = 0;
+    lo = 0;
+    hi = count - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (tops[mid] < bottom) {
+        end = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    end = Math.min(count - 1, end + overscan);
+
+    return { start, end, totalHeight };
   }
 
   function highlight(text, q) {
@@ -236,6 +299,11 @@
     escapeHTML,
     normalizeLike,
     matches,
+    countMatches,
+    ROW_COLLAPSED,
+    ROW_ACTIVE_EXPANDED,
+    buildRowOffsets,
+    visibleRange,
     highlight,
     sortList,
     pipeline,

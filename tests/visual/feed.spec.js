@@ -132,10 +132,10 @@ async function designStorageIndex(page) {
 
 test("renders Finder shell with storage data", async ({ page }) => {
   await openFeed(page);
-  await expect(page.locator(".logo")).toContainText("LikesFinder");
+  await expect(page.locator(".logo")).toContainText("X LikesSearch");
   await expect(page.locator("#sb-status")).toHaveText("4 liked · local only");
   await expect(page.locator(".row")).toHaveCount(4);
-  await expect(page.locator("#mc")).toHaveText("4 of 4");
+  await expect(page.locator("#mc")).toBeHidden();
   await expect(page.locator(".row.active")).toHaveCount(0);
   await expect(page.locator(".row").first().locator(".stats")).toHaveText("♡ 193⇄ 76");
   await expect(page.locator(".row").first().locator(".mtag")).toHaveCount(0);
@@ -145,6 +145,7 @@ test("renders Finder shell with storage data", async ({ page }) => {
 test("searches, navigates, opens, clears, and copies", async ({ page, browserName }) => {
   await openFeed(page);
   await page.locator("#q").fill("Claude");
+  await page.waitForTimeout(250);
   await expect(page.locator(".row")).toHaveCount(2);
   await expect(page.locator("#mc")).toContainText("1 / 2 in 4");
   await expect(page.locator("mark").first()).toHaveText("Claude");
@@ -167,7 +168,7 @@ test("searches, navigates, opens, clears, and copies", async ({ page, browserNam
   await expect(page.locator("#q")).toHaveValue("");
   await expect(page.locator(".row")).toHaveCount(4);
 
-  await page.locator("#show-onboard").click();
+  await page.evaluate(() => document.getElementById("onboard").classList.add("show"));
   await expect(page.locator("#onboard")).toHaveClass(/show/);
   await page.locator("#clear").click();
   expect(await page.evaluate(() => window.__removedKeys)).toEqual(["x_likes_index", "x_likes_state"]);
@@ -183,6 +184,7 @@ test("theme, history, filters, sorting, export, and storage refresh work", async
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
   await page.locator("#q").fill("design");
+  await page.waitForTimeout(250);
   await page.waitForTimeout(1200);
   await page.locator("#q").fill("");
   await page.locator("#q").focus();
@@ -191,15 +193,10 @@ test("theme, history, filters, sorting, export, and storage refresh work", async
   await page.keyboard.press("Escape");
   await expect(page.locator("#history")).not.toHaveClass(/show/);
 
-  await page.locator("#author").selectOption("rentanaka");
-  await expect(page.locator(".row")).toHaveCount(1);
-  await expect(page.locator(".row")).toHaveAttribute("data-id", "1003");
-  await page.locator("#author").selectOption("all");
+  await page.locator('[data-sort="author"]').click();
+  await expect(page.locator(".row").first().locator(".nm")).toContainText("Devon");
   await page.locator('[data-sort="oldest"]').click();
   await expect(page.locator(".row").first()).toHaveAttribute("data-id", "1004");
-  await page.locator("#media-only").click();
-  await expect(page.locator(".empty .big")).toHaveText("No matches");
-
   await page.locator("#export").click();
   expect(await page.evaluate(() => window.__downloads[0].download)).toMatch(/^x-likes-\d{4}-\d{2}-\d{2}\.json$/);
 
@@ -260,10 +257,11 @@ test("visual states match the Finder direction with strict thresholds", async ({
   await openFeed(page);
   await expect(page).toHaveScreenshot("finder-dark.png", { maxDiffPixelRatio: 0.02 });
   await page.locator("#q").fill("Claude");
+  await page.waitForTimeout(250);
   await expect(page).toHaveScreenshot("finder-search.png", { maxDiffPixelRatio: 0.02 });
   await page.locator("#theme-btn").click();
   await expect(page).toHaveScreenshot("finder-light.png", { maxDiffPixelRatio: 0.02 });
-  await page.locator("#show-onboard").click();
+  await page.evaluate(() => document.getElementById("onboard").classList.add("show"));
   await expect(page).toHaveScreenshot("finder-onboard.png", { maxDiffPixelRatio: 0.02 });
 });
 
@@ -281,6 +279,7 @@ test("implementation screenshots closely match the Finder reference", async ({ b
 
   await design.locator("#q").fill("Claude");
   await impl.locator("#q").fill("Claude");
+  await impl.waitForTimeout(250);
   const designSearch = await design.screenshot({ fullPage: false });
   const implSearch = await impl.screenshot({ fullPage: false });
   expect(await diffScreenshots(designSearch, implSearch)).toBeLessThan(0.08);

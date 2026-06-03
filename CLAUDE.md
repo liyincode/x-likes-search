@@ -13,11 +13,12 @@ The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is 
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
 - **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
 - **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
-- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the on-page **Sync** button (a pill anchored under the **Likes** tab) — or click **sync likes** in the Finder tab — then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
+- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the on-page **Sync** button (a pill anchored under the **Likes** tab) — or click **sync likes** in the X Likes Search tab — then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
 
 ### Tests
 
 - `npm run test:unit` — `node:test` over `feed-core.js` logic (no browser, no install of browsers needed).
+- `npm run test:perf` — Node bench comparing legacy full HTML render vs cached filter vs virtual window (~1376 synthetic likes). `npm run test:perf:input` — Playwright input-to-paint latency (optional).
 - `npm run test:visual` — Playwright: mocks `chrome.*`, exercises interactions, and pixel-diffs the implementation against `design/x-likes-search/Likes Finder.html`. Requires `npm install` (+ Playwright's chromium).
 - `npm test` — both. Snapshots live in `tests/visual/feed.spec.js-snapshots/`; the `design/` folder is the visual reference and is required by the visual suite.
 - **Put testable logic in `feed-core.js`, not `feed.js`** — `feed-core.js` is DOM-free precisely so it can be unit-tested under Node. `feed.js` should stay a thin DOM/`chrome.*` binding layer.
@@ -34,7 +35,7 @@ The hard part of this codebase is that code runs in three isolated JavaScript co
 
 3. **Service worker — `background.js`** (`importScripts("feed-core.js")`). This is where the **primary sync runs**. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })` directly: the extension's `host_permissions` make the browser attach the user's x.com cookies, and the captured `x-csrf-token`/bearer headers authenticate the call. No x.com tab is involved, so it survives redirects/navigation. It owns pagination, retry/backoff, and writes progress to `x_likes_sync`.
 
-4. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that renders the Finder UI and **drives a sync by messaging the service worker** (no tab juggling).
+4. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that renders the search UI and **drives a sync by messaging the service worker** (no tab juggling).
 
 ### Message protocols
 
@@ -44,13 +45,13 @@ Two separate channels — keep the string constants in sync across files:
 - `source: "xls"` — page → content: `TEMPLATE_CAPTURED` (captured request), `PAGE_RESULT` (replay response, correlated by `id`).
 - `source: "xls-cmd"` — content → page: `FETCH_PAGE` (replay this URL with these headers).
 
-**`chrome.runtime.sendMessage`** — `feed.js` → `background.js` (Finder tab → service worker), `source: "xls-feed"`:
+**`chrome.runtime.sendMessage`** — `feed.js` → `background.js` (X Likes Search tab → service worker), `source: "xls-feed"`:
 - `START_SYNC` (optional `mode: "full" | "incremental"`) — starts the SW sync and **acks immediately** `{ ok, started }` (or `{ ok, alreadyRunning }`, or `{ ok:false, error }` when no template is captured). It does **not** wait for the multi-minute crawl. `STOP_SYNC` sets a stop flag. `SYNC_STATUS` returns `{ ok, running, state }`. `runtime.sendMessage` reaches the SW and extension pages only — not content scripts — so there is no conflict with `content.js`.
 
 ### Storage schema (`chrome.storage.local`)
 
 Key-name constants are **duplicated** across files and must stay identical:
-- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts` counts when X provides them. `feed-core.js`'s `normalizeLike` maps these raw records into the Finder's view model (`{ author: {name, handle, hue, avatar}, date, stats, … }`) — keep that mapping in sync with what the parser writes.
+- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts` counts when X provides them. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model (`{ author: {name, handle, hue, avatar}, date, stats, … }`) — keep that mapping in sync with what the parser writes.
 - `x_likes_state` — `{ lastSyncAt, total, completed }`. `completed` records whether the last crawl reached a natural end; the SW reads it to auto-pick `full` mode and resume an interrupted crawl.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
 - `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, mode, page, added, total, message, error, stopped, startedAt }`.

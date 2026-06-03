@@ -3,12 +3,14 @@ const STATE_KEY = "x_likes_state";
 const SYNC_KEY = "x_likes_sync";
 const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
+const RENDER_DEBOUNCE_MS = 200;
 
 const Core = window.FeedCore;
 const $ = (s) => document.querySelector(s);
 
 const els = {
   q: $("#q"),
+  feedScroll: $("#feed-scroll"),
   results: $("#results"),
   empty: $("#empty"),
   count: $("#mc"),
@@ -23,7 +25,7 @@ const els = {
   obBar: $("#ob-bar"),
 };
 
-const state = { q: "", sort: "newest", active: -1 };
+const state = { q: "", sort: "newest", author: "all", mediaOnly: false, active: -1 };
 let allLikes = [];
 let view = [];
 let rawLikes = [];
@@ -31,11 +33,38 @@ let toastTimer = null;
 let historyTimer = null;
 let syncState = {};
 
+let cachedBase = null;
+let cachedPipelineKey = null;
+let renderTimer = null;
+let renderGen = 0;
+let paintRaf = 0;
+let rowLayout = { tops: [], heights: [], totalHeight: 0 };
+let virtualSpacer = null;
+let virtualWindow = null;
+let resultsWired = false;
+
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
 const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a6.5 6.5 0 0 0 10 10z"/></svg>';
 
 function appNow() {
   return window.__XLS_NOW ? new Date(window.__XLS_NOW) : new Date();
+}
+
+function pipelineCacheKey() {
+  return `${state.sort}|${state.author}|${state.mediaOnly ? 1 : 0}`;
+}
+
+function invalidatePipelineCache() {
+  cachedPipelineKey = null;
+  cachedBase = null;
+}
+
+function getCachedBase() {
+  const key = pipelineCacheKey();
+  if (cachedBase && cachedPipelineKey === key) return cachedBase;
+  cachedPipelineKey = key;
+  cachedBase = Core.pipeline(allLikes, state);
+  return cachedBase;
 }
 
 function getHistory() {
@@ -85,6 +114,9 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   els.theme.innerHTML = theme === "dark" ? MOON : SUN;
   localStorage.setItem(THEME_KEY, theme);
+  try {
+    chrome.storage.local.set({ [THEME_KEY]: theme });
+  } catch (_) {}
 }
 
 function initTheme() {
@@ -104,21 +136,18 @@ function updateStatus() {
   }
   els.obTotal.textContent = String(allLikes.length);
   els.obBar.style.width = allLikes.length ? "100%" : "0";
+  const sbStatus = els.status.closest(".sb-status");
+  if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(syncState.running));
   updateSyncButtons();
 }
 
 function updateSyncButtons() {
-  // A page-driven sync (started from the X tab's panel) can't be stopped from
-  // here, so keep the button as "sync" instead of showing a dead "stop".
   const remote = syncState.running && syncState.source === "page";
   const label = syncState.running && !remote ? "stop sync ⏹" : "sync likes ↻";
   ["#open-likes", "#ob-open"].forEach((sel) => {
     const b = $(sel);
     if (b) b.textContent = label;
   });
-  // Empty state (nothing indexed yet): keep the UI minimal — only the theme
-  // toggle and the centered two-step guide. Hide the sync button, export, and
-  // the sort filters until there's data to act on.
   const empty = allLikes.length === 0;
   const setHidden = (sel, hidden) => {
     const el = $(sel);
@@ -133,9 +162,22 @@ function updateCount(baseLen) {
   if (state.q) {
     const idx = state.active >= 0 ? state.active + 1 : 0;
     els.count.innerHTML = `<b>${idx}</b> / ${view.length} in ${allLikes.length}`;
+    els.count.style.display = "";
   } else {
-    els.count.textContent = `${baseLen} of ${allLikes.length}`;
+    els.count.textContent = "";
+    els.count.style.display = "none";
   }
+}
+
+function updateMatchCountPreview() {
+  if (!state.q) {
+    els.count.textContent = "";
+    els.count.style.display = "none";
+    return;
+  }
+  const n = Core.countMatches(getCachedBase(), state.q);
+  els.count.innerHTML = `<b>…</b> / ${n} in ${allLikes.length}`;
+  els.count.style.display = "";
 }
 
 function avatarHTML(t) {
@@ -152,8 +194,9 @@ function rowHTML(t, i) {
   const stats = t.stats
     ? `<span class="stats">${Number.isFinite(t.stats.likes) ? `<span>♡ ${t.stats.likes}</span>` : ""}${Number.isFinite(t.stats.reposts) ? `<span>⇄ ${t.stats.reposts}</span>` : ""}</span>`
     : "";
+  const active = i === state.active ? " active" : "";
   return `
-    <div class="row" data-i="${i}" data-id="${Core.escapeHTML(t.tweetId)}">
+    <div class="row${active}" data-i="${i}" data-id="${Core.escapeHTML(t.tweetId)}">
       ${avatarHTML(t)}
       <div class="meta">
         <div class="line1">
@@ -175,21 +218,120 @@ function rowHTML(t, i) {
     </div>`;
 }
 
-function paintActive() {
-  [...els.results.children].forEach((el, i) => el.classList.toggle("active", i === state.active));
+function ensureVirtualDOM() {
+  if (virtualSpacer && virtualWindow && els.results.contains(virtualSpacer)) return;
+  els.results.innerHTML =
+    '<div class="virtual-spacer" aria-hidden="true"></div><div class="virtual-window"></div>';
+  virtualSpacer = els.results.querySelector(".virtual-spacer");
+  virtualWindow = els.results.querySelector(".virtual-window");
+  wireResultsEvents();
+}
+
+function wireResultsEvents() {
+  if (resultsWired) return;
+  resultsWired = true;
+
+  els.results.addEventListener(
+    "error",
+    (e) => {
+      if (e.target.tagName === "IMG") e.target.remove();
+    },
+    true
+  );
+
+  els.results.addEventListener("click", (e) => {
+    const openBtn = e.target.closest(".open-btn");
+    if (openBtn) {
+      e.stopPropagation();
+      const row = openBtn.closest(".row");
+      if (row) openTweet(view[Number(row.dataset.i)]);
+      return;
+    }
+    const copyBtn = e.target.closest(".copy-btn");
+    if (copyBtn) {
+      e.stopPropagation();
+      const row = copyBtn.closest(".row");
+      if (row) copyLink(view[Number(row.dataset.i)], copyBtn);
+      return;
+    }
+    const row = e.target.closest(".row");
+    if (!row) return;
+    toggleActive(Number(row.dataset.i));
+  });
+
+  els.results.addEventListener("dblclick", (e) => {
+    const row = e.target.closest(".row");
+    if (row) openTweet(view[Number(row.dataset.i)]);
+  });
+
+  els.feedScroll.addEventListener("scroll", () => {
+    cancelAnimationFrame(paintRaf);
+    paintRaf = requestAnimationFrame(() => paintVisible(false));
+  });
+
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(paintRaf);
+    paintRaf = requestAnimationFrame(() => paintVisible(false));
+  });
+}
+
+function rebuildRowLayout() {
+  rowLayout = Core.buildRowOffsets(view.length, state.active);
+  if (virtualSpacer) virtualSpacer.style.height = `${rowLayout.totalHeight}px`;
+}
+
+function listViewport() {
+  const sc = els.feedScroll;
+  if (!sc || !els.results) return { scrollTop: 0, vh: 400 };
+  const scRect = sc.getBoundingClientRect();
+  const resultsRect = els.results.getBoundingClientRect();
+  const scrollTop = Math.max(0, sc.scrollTop - els.results.offsetTop);
+  const top = Math.max(resultsRect.top, scRect.top);
+  const bottom = Math.min(resultsRect.bottom, scRect.bottom);
+  const vh = Math.max(120, bottom - top);
+  return { scrollTop, vh };
+}
+
+function paintVisible(resetScroll) {
+  if (!view.length || !virtualWindow) return;
+
+  rebuildRowLayout();
+  if (resetScroll) els.feedScroll.scrollTop = els.results.offsetTop;
+
+  const { scrollTop, vh } = listViewport();
+  const { start, end } = Core.visibleRange(scrollTop, vh, rowLayout);
+
+  if (end < start) {
+    virtualWindow.innerHTML = "";
+    virtualWindow.style.transform = "translateY(0)";
+    return;
+  }
+
+  const parts = [];
+  for (let i = start; i <= end; i += 1) parts.push(rowHTML(view[i], i));
+  virtualWindow.style.transform = `translateY(${rowLayout.tops[start]}px)`;
+  virtualWindow.innerHTML = parts.join("");
 }
 
 function scrollToActive() {
-  const el = els.results.children[state.active];
-  if (!el) return;
-  const r = el.getBoundingClientRect();
-  if (r.top < 150 || r.bottom > window.innerHeight - 70) window.scrollBy({ top: r.top - 200, behavior: "smooth" });
+  if (state.active < 0 || !view.length) return;
+  const rowTop = rowLayout.tops[state.active];
+  const rowH = rowLayout.heights[state.active];
+  const resultsTop = els.results.offsetTop;
+  const { scrollTop: listTop, vh } = listViewport();
+  const margin = 80;
+  if (rowTop < listTop + margin) {
+    els.feedScroll.scrollTop = Math.max(0, resultsTop + rowTop - margin);
+  } else if (rowTop + rowH > listTop + vh - margin) {
+    els.feedScroll.scrollTop = resultsTop + rowTop + rowH - vh + margin;
+  }
 }
 
 function setActive(i, scroll) {
   state.active = i;
-  paintActive();
-  updateCount(Core.pipeline(allLikes, state).length);
+  if (!view.length) return;
+  paintVisible(false);
+  updateCount(getCachedBase().length);
   if (scroll) scrollToActive();
 }
 
@@ -210,9 +352,6 @@ function openTweet(t) {
   chrome.tabs.create({ url: t.url, active: false });
 }
 
-// The sync runs in the background service worker (no x.com tab needed). We just
-// send it a message and let it report progress through chrome.storage, which we
-// watch via storage.onChanged.
 function sendToWorker(msg) {
   return new Promise((resolve) => {
     try {
@@ -269,53 +408,58 @@ function copyLink(t, btn) {
   else done();
 }
 
-function bindRows() {
-  [...els.results.children].forEach((el, i) => {
-    el.addEventListener("click", () => toggleActive(i));
-    el.addEventListener("dblclick", () => openTweet(view[i]));
-    el.querySelector("img")?.addEventListener("error", (ev) => {
-      ev.currentTarget.remove();
-    });
-    el.querySelector(".open-btn")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      openTweet(view[i]);
-    });
-    el.querySelector(".copy-btn")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      copyLink(view[i], ev.currentTarget);
-    });
-  });
-}
+function rebuildView() {
+  const base = getCachedBase();
+  if (!state.q) view = base;
+  else view = base.filter((t) => Core.matches(t, state.q));
 
-function render() {
-  const base = Core.pipeline(allLikes, state);
-  view = base.filter((t) => Core.matches(t, state.q));
   if (state.q && state.active < 0 && view.length) state.active = 0;
   if (state.active >= view.length) state.active = view.length ? 0 : -1;
-  updateStatus();
-  updateCount(base.length);
+}
 
-  if (!view.length) {
-    els.results.innerHTML = "";
-    if (allLikes.length) {
-      els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
-    } else {
-      els.empty.innerHTML = `
+function renderEmptyState() {
+  els.results.innerHTML = "";
+  els.results.style.display = "none";
+  virtualSpacer = null;
+  virtualWindow = null;
+
+  if (allLikes.length) {
+    els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+  } else {
+    els.empty.innerHTML = `
         <div class="empty">
           <div class="big">No likes indexed yet</div>
           <div class="steps-guide">
             <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes page</div><div class="ss">Go to <a href="https://x.com" target="_blank" rel="noreferrer">x.com</a> → Profile → Likes.</div></div></div>
-            <div class="step"><div class="n">2</div><div><div class="sb">Click Sync</div><div class="ss">Use the panel at the bottom-right of that page.</div></div></div>
+            <div class="step"><div class="n">2</div><div><div class="sb">Click Sync</div><div class="ss">Hit the <b>Sync</b> button under the Likes tab.</div></div></div>
           </div>
         </div>`;
-    }
+  }
+}
+
+function renderList(resetScroll = true) {
+  rebuildView();
+  updateStatus();
+  updateCount(getCachedBase().length);
+
+  if (!view.length) {
+    renderEmptyState();
     return;
   }
 
   els.empty.innerHTML = "";
-  els.results.innerHTML = view.map(rowHTML).join("");
-  bindRows();
-  paintActive();
+  els.results.style.display = "";
+  ensureVirtualDOM();
+  paintVisible(resetScroll);
+}
+
+function scheduleRender(resetScroll = true) {
+  const gen = ++renderGen;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    if (gen !== renderGen) return;
+    renderList(resetScroll);
+  }, RENDER_DEBOUNCE_MS);
 }
 
 function move(delta) {
@@ -331,7 +475,8 @@ async function load() {
   const index = data[STORAGE_KEY] || {};
   rawLikes = Object.values(index);
   allLikes = rawLikes.map(Core.normalizeLike);
-  render();
+  invalidatePipelineCache();
+  renderList();
 }
 
 function exportLikes() {
@@ -360,7 +505,8 @@ function wireEvents() {
   els.q.addEventListener("input", () => {
     state.q = els.q.value.trim();
     state.active = -1;
-    render();
+    updateMatchCountPreview();
+    scheduleRender(true);
     maybeShowHistory();
     clearTimeout(historyTimer);
     historyTimer = setTimeout(() => {
@@ -391,7 +537,8 @@ function wireEvents() {
       state.q = els.q.value;
       state.active = -1;
       els.history.classList.remove("show");
-      render();
+      updateMatchCountPreview();
+      renderList(true);
       els.q.focus();
     }
   });
@@ -404,13 +551,14 @@ function wireEvents() {
       return;
     }
     if (e.key === "Escape") {
-      if (els.q.value) {
-        els.q.value = "";
-        state.q = "";
-        state.active = -1;
-        render();
-      }
       els.history.classList.remove("show");
+      if (!els.q.value) return;
+      e.preventDefault();
+      els.q.value = "";
+      state.q = "";
+      state.active = -1;
+      updateMatchCountPreview();
+      renderList(true);
       return;
     }
     if (e.key === "ArrowDown") {
@@ -433,7 +581,8 @@ function wireEvents() {
     if (!btn) return;
     state.sort = btn.dataset.sort;
     [...els.sort.children].forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-    render();
+    invalidatePipelineCache();
+    renderList(true);
   });
 
   $("#open-likes").addEventListener("click", toggleSync);
@@ -463,4 +612,15 @@ wireEvents();
 load();
 refreshSyncState();
 
-window.__feedApp = { state, get allLikes() { return allLikes; }, get view() { return view; }, load, render };
+window.__feedApp = {
+  state,
+  get allLikes() {
+    return allLikes;
+  },
+  get view() {
+    return view;
+  },
+  load,
+  render: renderList,
+  RENDER_DEBOUNCE_MS,
+};

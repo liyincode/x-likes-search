@@ -2,7 +2,7 @@
 
 Browse and search your X (Twitter) liked tweets in an X-styled feed — locally, instantly, offline.
 
-**v0.4 — Finder.** Click the extension icon and a full-page "Likes · Finder" tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, author/media filters, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page — no need to visit `/likes` manually.
+**v0.4.** Click the extension icon and a full-page **X Likes Search** tab opens: a command-style search bar over your liked tweets with instant keyword highlighting, author/media filters, newest/oldest/author sorting, recent-search history, a dark/light theme toggle, and full keyboard navigation. You can kick off a sync straight from this page — no need to visit `/likes` manually.
 
 ## How it works
 
@@ -10,7 +10,7 @@ Browse and search your X (Twitter) liked tweets in an X-styled feed — locally,
 2. **`background.js`** (service worker) does the actual sync: given the captured template it replays the Likes GraphQL request with `fetch(..., { credentials: "include" })`, so the browser attaches your x.com cookies and the captured `x-csrf-token`/bearer headers authenticate it — **no x.com tab needed**. It paginates with successive `cursor` values, with retry/backoff for transient errors and full/incremental modes for completeness, writing each tweet's id / author / display name / avatar / full text / timestamp / like & repost counts into `chrome.storage.local`.
 3. **`content.js`** handles capture (injects `inject.js`, persists the template) and renders the on-page **Sync** button — a small pill anchored under the profile's **Likes** tab — which runs a page-world sync as a fallback path.
 4. **`feed-core.js`** is a dependency-free, DOM-free core (UMD): the GraphQL `parseLikesResponse` (shared by the SW and content script) plus normalizing likes into view models, search matching/highlighting, sorting, filtering, author lists, relative dates, and history. It runs in the browser (`window.FeedCore`), the service worker (`importScripts`), and under Node (unit tests).
-5. **`feed.html` + `feed.js`** is the Finder UI — a thin DOM/`chrome.*` layer over `feed-core.js` that messages the service worker to drive syncs. Plain substring match (text + author + display name), instant.
+5. **`feed.html` + `feed.js`** is the search UI — a thin DOM/`chrome.*` layer over `feed-core.js` that messages the service worker to drive syncs. Plain substring match (text + author + display name), instant.
 
 No server, no manual auth, nothing leaves your browser.
 
@@ -29,14 +29,14 @@ No server, no manual auth, nothing leaves your browser.
 
 **Then sync from anywhere:**
 
-- **From the Finder tab (normal):** open the extension and click **sync likes ↻** (header or first-run dialog). The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop sync ⏹**. New tweets stream into the list as they're fetched.
+- **From the X Likes Search tab (normal):** open the extension and click **sync likes ↻** (header or first-run dialog). The background service worker replays the captured request with your cookies — **no x.com tab required, nothing to keep open.** The status line shows live progress (`Page N: +M (run +X)`); the button becomes **stop sync ⏹**. New tweets stream into the list as they're fetched.
 - **From the X likes page (fallback):** a small **Sync** button sits under the **Likes** tab (inside the "your likes are private" banner) if you prefer to run it there. While it runs, the button shows a live count and ends on `Synced N`.
 
 If a sync ever errors with an auth/HTTP 403 message, the captured template went stale — just reload your likes page once to recapture, then sync again.
 
 ### Browse & search
 
-- Click the extension icon → opens (or focuses) the **Likes · Finder** tab.
+- Click the extension icon → opens (or focuses) the **X Likes Search** tab.
 - Type in the search box — results filter instantly with match highlighting, first match auto-selected.
 - **`Enter` / `↓`** next match · **`↑`** previous match (Cmd+F-style — Enter does **not** open the tweet, just navigates through matches).
 - **`Cmd+Enter` (macOS) / `Ctrl+Enter`** opens the selected tweet in a background tab. **Double-click** a card opens too; a single click expands it to show stats and copy/open actions.
@@ -63,7 +63,7 @@ manifest.json     # MV3 manifest
 background.js     # Action click → open/focus feed.html tab
 content.js        # Inject bridge + capture + page-world sync + on-page Sync button (under the Likes tab)
 inject.js         # Page-world fetch/XHR patch + capture + replay bridge
-feed.html/css/js  # Full-page Finder UI (DOM + chrome.* layer)
+feed.html/css/js  # Full-page search UI (DOM + chrome.* layer)
 feed-core.js      # DOM-free, dependency-free core logic (UMD; shared by the UI and unit tests)
 assets/fonts/     # Bundled Space Grotesk + JetBrains Mono (no CDN, CSP-safe)
 design/           # Static design reference the visual tests diff against

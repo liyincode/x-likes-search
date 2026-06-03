@@ -14,6 +14,8 @@ test("normalizes storage likes into Finder view models", () => {
   assert.equal(item.url, "https://x.com/devonml/status/1001");
   assert.deepEqual(item.stats, { likes: 193, reposts: 76 });
   assert.ok(Number.isFinite(item.author.hue));
+  assert.ok(item.searchHay.includes("devonml"));
+  assert.ok(item.searchHay.includes("claude"));
 });
 
 test("search matches text, display name, and handle with escaped highlights", () => {

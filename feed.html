@@ -3,42 +3,45 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Likes · Finder</title>
+    <title>X Likes Search</title>
     <link rel="stylesheet" href="feed.css" />
   </head>
   <body>
     <div class="shell">
+      <div class="feed-scroll" id="feed-scroll">
       <div class="bar">
-        <div class="logo"><b>Likes</b><span class="t">Finder</span></div>
+        <div class="logo"><b>X Likes</b><span class="t">Search</span></div>
         <div class="grow"></div>
         <button class="ico-btn square" id="theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
         <button class="ico-btn" id="export">export</button>
         <button class="ico-btn accent" id="open-likes">sync likes ↻</button>
       </div>
 
-      <div class="cmd-wrap">
-        <div class="cmd">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
-            <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" autofocus />
-          <span class="matchcount" id="mc"></span>
+      <div class="sticky-chrome">
+        <div class="cmd-wrap">
+          <div class="cmd">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+              <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" />
+            <span class="matchcount" id="mc"></span>
+          </div>
+          <div class="history" id="history"></div>
         </div>
-        <div class="history" id="history"></div>
-      </div>
 
-      <div class="filters">
-        <div class="fgrow"></div>
-        <div class="sortgrp" id="sort" aria-label="Sort results">
-          <button data-sort="newest" aria-pressed="true">newest</button>
-          <button data-sort="oldest" aria-pressed="false">oldest</button>
-          <button data-sort="author" aria-pressed="false">author</button>
+        <div class="filters">
+          <div class="sortgrp" id="sort" aria-label="Sort results">
+            <button data-sort="newest" aria-pressed="true">newest</button>
+            <button data-sort="oldest" aria-pressed="false">oldest</button>
+            <button data-sort="author" aria-pressed="false">author</button>
+          </div>
         </div>
       </div>
 
       <div class="results" id="results"></div>
       <div id="empty"></div>
+      </div>
     </div>
 
     <div class="statusbar">

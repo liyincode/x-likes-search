@@ -7,6 +7,7 @@
   const STATE_KEY = "x_likes_state";
   const TEMPLATE_KEY = "x_likes_template";
   const SYNC_KEY = "x_likes_sync"; // transient progress, watched by the feed page
+  const THEME_KEY = "finder-theme"; // synced with feed.js; drives likes-page Sync pill colors
 
   // After reloading the extension, old content scripts lose chrome.* APIs.
   function extensionAlive() {
@@ -307,6 +308,25 @@
     renderFabLabel();
   }
 
+  function resolveFabTheme(stored) {
+    if (stored === "light" || stored === "dark") return stored;
+    try {
+      return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    } catch (_) {
+      return "dark";
+    }
+  }
+
+  async function loadFabTheme() {
+    const d = await storageGet(THEME_KEY);
+    return resolveFabTheme(d[THEME_KEY]);
+  }
+
+  function applyFabTheme(theme) {
+    const fab = document.getElementById("xls-fab");
+    if (fab) fab.dataset.xlsTheme = theme;
+  }
+
   async function onFabClick() {
     if (syncing) {
       stopRequested = true;
@@ -440,18 +460,25 @@
     fab.innerHTML = `
       <style>
         #xls-fab {
+          --xls-accent: oklch(0.72 0.16 262);
+          --xls-on-accent: oklch(0.99 0 0);
+          --xls-accent-glow: oklch(0.72 0.16 262 / .4);
           position: fixed; top: 0; left: 0; z-index: 2147483646; display: none;
           align-items: center; gap: 6px; box-sizing: border-box;
           height: 32px; padding: 0 16px; border-radius: 999px;
-          background: #1d9bf0; color: #fff; border: 0; cursor: pointer;
+          background: var(--xls-accent); color: var(--xls-on-accent); border: 0; cursor: pointer;
           font: 700 14px/1 -apple-system, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          box-shadow: 0 1px 3px rgba(0,0,0,.18);
-          transition: transform .14s ease, background-color .2s ease, box-shadow .18s ease;
+          box-shadow: 0 1px 3px oklch(0 0 0 / .18);
+          transition: transform .14s ease, filter .2s ease, box-shadow .18s ease;
           -webkit-tap-highlight-color: transparent; user-select: none;
         }
+        #xls-fab[data-xls-theme="light"] {
+          --xls-accent: oklch(0.52 0.19 264);
+          --xls-accent-glow: oklch(0.52 0.19 264 / .35);
+        }
         #xls-fab:hover, #xls-fab:focus-visible {
-          background: #1a8cd8; transform: translateY(-1px); outline: none;
-          box-shadow: 0 3px 12px rgba(29,155,240,.4);
+          filter: brightness(1.08); transform: translateY(-1px); outline: none;
+          box-shadow: 0 3px 12px var(--xls-accent-glow);
         }
         #xls-fab:active { transform: translateY(0) scale(.97); }
         #xls-fab .xls-fab-spin {
@@ -502,6 +529,7 @@
       <span class="xls-fab-tip"></span>
     `;
     document.body.appendChild(fab);
+    void loadFabTheme().then(applyFabTheme);
     fab.addEventListener("click", onFabClick);
     fab.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -530,6 +558,12 @@
     obs.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("scroll", scheduleReposition, true);
     window.addEventListener("resize", scheduleReposition);
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local" || !changes[THEME_KEY]) return;
+        applyFabTheme(resolveFabTheme(changes[THEME_KEY].newValue));
+      });
+    } catch (_) {}
     maybeInject();
   }
   if (document.body) startObserving();
