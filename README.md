@@ -8,6 +8,8 @@ If you use likes as bookmarks, finding an old liked tweet later usually means sc
 
 Your data stays in your browser. There is no server, no manual login flow, and nothing is uploaded.
 
+![X Likes Search screenshot](assets/readme-screenshot.png)
+
 ## Install
 
 1. Open the latest release page and download the zip file:
