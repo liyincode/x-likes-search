@@ -186,6 +186,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  text-decoration: none;
   transition: background .14s, color .14s, border-color .14s, filter .14s;
 }
 .ico-btn:hover { background: var(--panel-hi); color: var(--txt); border-color: var(--line-2); }
