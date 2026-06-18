@@ -176,6 +176,47 @@ test("searches, navigates, opens, clears, and copies", async ({ page, browserNam
   expect(browserName).toBe("chromium");
 });
 
+test("keeps a long expanded row mounted while scrolling to actions", async ({ page }) => {
+  const longText = Array.from(
+    { length: 80 },
+    (_, i) => `Line ${i + 1}: long liked post content that should remain expanded while the action buttons are reached.`
+  ).join("\n");
+  const index = {
+    "long-1": {
+      tweetId: "long-1",
+      text: longText,
+      datetime: "2026-06-03T11:30:00Z",
+      author: "longform",
+      displayName: "Long Form",
+      url: "https://x.com/longform/status/long-1",
+    },
+    "tail-1": {
+      tweetId: "tail-1",
+      text: "Short post after the long one",
+      datetime: "2026-06-03T10:30:00Z",
+      author: "tail",
+      displayName: "Tail",
+      url: "https://x.com/tail/status/tail-1",
+    },
+  };
+
+  await openFeed(page, index);
+  await page.locator('[data-id="long-1"]').click();
+
+  const active = page.locator('[data-id="long-1"].active');
+  await expect(active).toBeVisible();
+  const box = await active.boundingBox();
+  expect(box?.height).toBeGreaterThan(500);
+
+  await active.locator(".open-btn").scrollIntoViewIfNeeded();
+  await expect(active).toBeVisible();
+  await active.locator(".open-btn").click();
+  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({
+    url: "https://x.com/longform/status/long-1",
+    active: true,
+  });
+});
+
 test("theme, history, filters, sorting, export, and storage refresh work", async ({ page }) => {
   await openFeed(page);
   await page.locator("#theme-btn").click();

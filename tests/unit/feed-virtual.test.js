@@ -14,6 +14,13 @@ test("buildRowOffsets uses expanded height only for active index", () => {
   );
 });
 
+test("buildRowOffsets accepts a measured expanded row height", () => {
+  const layout = Core.buildRowOffsets(4, 1, Core.ROW_COLLAPSED, 420);
+  assert.equal(layout.heights[1], 420);
+  assert.equal(layout.tops[2], Core.ROW_COLLAPSED + 420);
+  assert.equal(layout.totalHeight, Core.ROW_COLLAPSED * 3 + 420);
+});
+
 test("visibleRange returns empty slice for zero count", () => {
   const layout = Core.buildRowOffsets(0, -1);
   const range = Core.visibleRange(0, 400, layout);

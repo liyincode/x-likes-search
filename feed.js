@@ -39,6 +39,8 @@ let rowLayout = { tops: [], heights: [], totalHeight: 0 };
 let virtualSpacer = null;
 let virtualWindow = null;
 let resultsWired = false;
+let activeRowHeight = Core.ROW_ACTIVE_EXPANDED;
+let activeRowHeightId = null;
 
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
 const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a6.5 6.5 0 0 0 10 10z"/></svg>';
@@ -286,8 +288,26 @@ function wireResultsEvents() {
   });
 }
 
+function syncActiveRowHeightIdentity() {
+  const id = state.active >= 0 ? view[state.active]?.tweetId || String(state.active) : null;
+  if (id !== activeRowHeightId) {
+    activeRowHeightId = id;
+    activeRowHeight = Core.ROW_ACTIVE_EXPANDED;
+  }
+}
+
+function measureActiveRowHeight() {
+  const row = virtualWindow?.querySelector(".row.active");
+  if (!row) return false;
+  const measured = Math.max(Core.ROW_ACTIVE_EXPANDED, Math.ceil(row.getBoundingClientRect().height));
+  if (Math.abs(measured - activeRowHeight) <= 1) return false;
+  activeRowHeight = measured;
+  return true;
+}
+
 function rebuildRowLayout() {
-  rowLayout = Core.buildRowOffsets(view.length, state.active);
+  syncActiveRowHeightIdentity();
+  rowLayout = Core.buildRowOffsets(view.length, state.active, Core.ROW_COLLAPSED, activeRowHeight);
   if (virtualSpacer) virtualSpacer.style.height = `${rowLayout.totalHeight}px`;
 }
 
@@ -322,6 +342,7 @@ function paintVisible(resetScroll) {
   for (let i = start; i <= end; i += 1) parts.push(rowHTML(view[i], i));
   virtualWindow.style.transform = `translateY(${rowLayout.tops[start]}px)`;
   virtualWindow.innerHTML = parts.join("");
+  if (measureActiveRowHeight()) rebuildRowLayout();
 }
 
 function scrollToActive() {
