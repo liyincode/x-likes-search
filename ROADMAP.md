@@ -7,6 +7,7 @@
 ## Completed
 
 - 2026-06-18: Fixed long expanded feed rows being removed by virtual scrolling before their action buttons could be reached. The active row now feeds its measured DOM height back into the virtual list layout.
+- 2026-06-18: Prepared v0.4.6 release metadata for the long expanded row virtualization fix.
 
 ## In Progress
 
