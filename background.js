@@ -36,6 +36,7 @@ chrome.action.onClicked.addListener(async () => {
 // ---- Sync ----
 let syncing = false;
 let stopRequested = false;
+let liveSyncState = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,11 +54,68 @@ async function getLocal(keys) {
   return chrome.storage.local.get(keys);
 }
 
+async function setLocalRequired(items) {
+  return FeedCore.setStorageRequired(chrome.storage.local, items);
+}
+
+function updateLiveSyncState(patch) {
+  liveSyncState = { ...(liveSyncState || {}), ...patch };
+  return liveSyncState;
+}
+
 async function setSyncState(patch) {
-  const cur = (await getLocal(SYNC_KEY))[SYNC_KEY] || {};
+  const cur = liveSyncState || (await getLocal(SYNC_KEY))[SYNC_KEY] || {};
   const next = { ...cur, ...patch };
-  await chrome.storage.local.set({ [SYNC_KEY]: next });
+  liveSyncState = next;
+  await setLocalRequired({ [SYNC_KEY]: next });
   return next;
+}
+
+async function reportSyncFailure(error) {
+  syncing = false;
+  const message = String(error?.message || error || "Sync failed.");
+  const next = updateLiveSyncState({
+    running: false,
+    done: true,
+    complete: false,
+    error: message,
+    message,
+  });
+  try {
+    await markIncomplete();
+  } catch (stateError) {
+    console.error("Could not mark the interrupted sync as incomplete.", stateError);
+  }
+  try {
+    await chrome.storage.local.set({ [SYNC_KEY]: next });
+  } catch (syncStateError) {
+    console.error("Could not persist the final sync error state.", syncStateError);
+  }
+}
+
+async function currentSyncStatus() {
+  if (liveSyncState) return { ok: true, running: syncing, state: liveSyncState };
+  const stored = (await getLocal(SYNC_KEY))[SYNC_KEY] || null;
+  if (stored?.running && stored.source !== "page") {
+    const message = "Sync was interrupted. Start it again to continue.";
+    const interrupted = {
+      ...stored,
+      running: false,
+      done: true,
+      complete: false,
+      error: message,
+      message,
+    };
+    liveSyncState = interrupted;
+    try {
+      await chrome.storage.local.set({ [SYNC_KEY]: interrupted });
+    } catch (error) {
+      console.error("Could not persist the interrupted sync state.", error);
+    }
+    return { ok: true, running: false, state: interrupted };
+  }
+  liveSyncState = stored;
+  return { ok: true, running: false, state: stored };
 }
 
 // fetch() forbids a handful of header names; the browser sets the real values.
@@ -149,17 +207,13 @@ async function startSync(requestedMode) {
   // Fire and forget: the loop reports progress through chrome.storage, which the
   // feed page watches via storage.onChanged. We do NOT hold the message channel
   // open for the whole (multi-minute) sync.
-  syncLoop(template, requestedMode).catch(async (e) => {
-    syncing = false;
-    await markIncomplete();
-    await setSyncState({ running: false, done: true, complete: false, error: String((e && e.message) || e) });
-  });
+  syncLoop(template, requestedMode).catch(reportSyncFailure);
   return { ok: true, started: true };
 }
 
 async function markIncomplete() {
   const prev = (await getLocal(STATE_KEY))[STATE_KEY] || {};
-  await chrome.storage.local.set({ [STATE_KEY]: { ...prev, completed: false } });
+  await setLocalRequired({ [STATE_KEY]: { ...prev, completed: false } });
 }
 
 async function syncLoop(template, requestedMode) {
@@ -214,6 +268,7 @@ async function syncLoop(template, requestedMode) {
     page: 0,
     added: 0,
     total,
+    stopped: false,
     startedAt: Date.now(),
     message: `Starting ${mode} sync…`,
   });
@@ -228,6 +283,7 @@ async function syncLoop(template, requestedMode) {
       body = await fetchPage(url.toString(), method, headers, pages);
     } catch (e) {
       if (String(e.message) === "stopped") break;
+      if (e?.code === "XLS_STORAGE_WRITE") throw e;
       syncing = false;
       await markIncomplete();
       await setSyncState({
@@ -269,7 +325,7 @@ async function syncLoop(template, requestedMode) {
         newThisPage += 1;
       }
     }
-    await chrome.storage.local.set({ [STORAGE_KEY]: index });
+    await setLocalRequired({ [STORAGE_KEY]: index });
 
     if (newThisPage === 0) consecutiveEmpty += 1;
     else consecutiveEmpty = 0;
@@ -301,7 +357,7 @@ async function syncLoop(template, requestedMode) {
   // "completed" is true only when we walked to a natural stopping point — used
   // next run to decide whether to resume a full crawl.
   const completed = reachedEnd && !stopRequested;
-  await chrome.storage.local.set({
+  await setLocalRequired({
     [STATE_KEY]: { ...prevState, lastSyncAt: Date.now(), total, completed },
   });
   syncing = false;
@@ -324,7 +380,13 @@ async function syncLoop(template, requestedMode) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.source !== "xls-feed") return false;
+  if (!msg) return false;
+  if (msg.source === "xls-page" && msg.type === "SYNC_STATE") {
+    liveSyncState = { ...(msg.state || {}), source: "page" };
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (msg.source !== "xls-feed") return false;
   if (msg.type === "START_SYNC") {
     // msg.mode is optional ("full" | "incremental"); omitted → auto.
     startSync(msg.mode).then(sendResponse);
@@ -336,7 +398,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   if (msg.type === "SYNC_STATUS") {
-    getLocal(SYNC_KEY).then((d) => sendResponse({ ok: true, running: syncing, state: d[SYNC_KEY] || null }));
+    currentSyncStatus().then(sendResponse, (error) =>
+      sendResponse({ ok: false, running: syncing, state: liveSyncState, error: String(error?.message || error) })
+    );
     return true;
   }
   return false;

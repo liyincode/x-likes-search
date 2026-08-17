@@ -48,15 +48,18 @@ Two separate channels — keep the string constants in sync across files:
 **`chrome.runtime.sendMessage`** — `feed.js` → `background.js` (X Likes Search tab → service worker), `source: "xls-feed"`:
 - `START_SYNC` (optional `mode: "full" | "incremental"`) — starts the SW sync and **acks immediately** `{ ok, started }` (or `{ ok, alreadyRunning }`, or `{ ok:false, error }` when no template is captured). It does **not** wait for the multi-minute crawl. `STOP_SYNC` sets a stop flag. `SYNC_STATUS` returns `{ ok, running, state }`. `runtime.sendMessage` reaches the SW and extension pages only — not content scripts — so there is no conflict with `content.js`.
 
+**`chrome.runtime.sendMessage`** — `content.js` → `background.js`, `source: "xls-page"`:
+- `SYNC_STATE` mirrors the fallback page sync into the worker's in-memory state before storage persistence. This lets `feed.js` reconcile a failed status write through `SYNC_STATUS` instead of remaining stuck on a stale `running: true` value.
+
 ### Storage schema (`chrome.storage.local`)
 
 Key-name constants are **duplicated** across files and must stay identical:
 - `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts` counts when X provides them. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model (`{ author: {name, handle, hue, avatar}, date, stats, … }`) — keep that mapping in sync with what the parser writes.
 - `x_likes_state` — `{ lastSyncAt, total, completed }`. `completed` records whether the last crawl reached a natural end; the SW reads it to auto-pick `full` mode and resume an interrupted crawl.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
-- `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, mode, page, added, total, message, error, stopped, startedAt }`.
+- `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, mode, page, added, total, message, error, stopped, startedAt }`. The worker also keeps the latest value in memory so a storage failure can still be reported through `SYNC_STATUS`.
 
-The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-updates an open feed tab (both new tweets and the status line).
+The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-updates an open feed tab (both new tweets and the status line). Index updates consume `StorageChange.newValue` directly and are coalesced while a sync is running; sync-state changes do not reload the full index. Critical index/state/status writes must reject on failure rather than allowing the sync to report completion.
 
 ## Two fragile spots tied to X's internals
 

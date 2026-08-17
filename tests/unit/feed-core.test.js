@@ -107,6 +107,30 @@ test("parseLikesResponse tolerates an empty or garbage body", () => {
   assert.deepEqual(Core.parseLikesResponse(null), { tweets: [], nextCursor: null });
 });
 
+test("required storage writes expose quota failures", async () => {
+  const storage = {
+    async set() {
+      throw new Error("QUOTA_BYTES quota exceeded");
+    },
+  };
+  await assert.rejects(
+    Core.setStorageRequired(storage, { x_likes_index: {} }),
+    /Local storage is full\. Sync stopped before reporting completion\./
+  );
+});
+
+test("required storage writes preserve a useful generic failure", async () => {
+  const storage = {
+    async set() {
+      throw new Error("disk unavailable");
+    },
+  };
+  await assert.rejects(
+    Core.setStorageRequired(storage, { x_likes_state: {} }),
+    /Could not save sync data\. Sync stopped before reporting completion\./
+  );
+});
+
 test("relative dates are stable when now is fixed", () => {
   const now = new Date("2026-06-03T12:00:00Z");
   assert.equal(Core.relativeDate("2026-06-03T11:59:40Z", now), "now");

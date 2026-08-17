@@ -16,6 +16,7 @@ async function installChromeMock(page, index = fixture.index) {
     window.__runtimeMessages = [];
     window.__removedKeys = [];
     window.__storageListeners = [];
+    window.__storageGets = [];
     window.__downloads = [];
     window.confirm = () => true;
     Object.defineProperty(navigator, "clipboard", {
@@ -39,6 +40,7 @@ async function installChromeMock(page, index = fixture.index) {
       storage: {
         local: {
           async get(keys) {
+            window.__storageGets.push(keys);
             const out = {};
             (Array.isArray(keys) ? keys : [keys]).forEach((key) => { out[key] = localStore[key]; });
             return out;
@@ -242,17 +244,68 @@ test("theme, history, filters, sorting, export, and storage refresh work", async
   expect(await page.evaluate(() => window.__downloads[0].download)).toMatch(/^x-likes-\d{4}-\d{2}-\d{2}\.json$/);
 
   await page.evaluate(() => {
-    window.__localStore.x_likes_index["1005"] = {
+    const nextIndex = { ...window.__localStore.x_likes_index, "1005": {
       tweetId: "1005",
       text: "A new local-only liked tweet",
       datetime: "2026-06-03T08:00:00Z",
       author: "newdev",
       displayName: "New Dev",
       url: "https://x.com/newdev/status/1005",
-    };
-    window.__storageListeners.forEach((fn) => fn({ x_likes_index: {} }, "local"));
+    } };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_index: { newValue: nextIndex } }, "local"));
   });
   await expect(page.locator("#sb-status")).toHaveText("5 liked · local only");
+});
+
+test("uses index newValue, ignores state-only changes, and flushes the latest synced index", async ({ page }) => {
+  await openFeed(page);
+  const initialGets = await page.evaluate(() => window.__storageGets.length);
+
+  await page.evaluate(() => {
+    const nextIndex = { ...window.__localStore.x_likes_index };
+    nextIndex["1005"] = {
+      tweetId: "1005",
+      text: "Delivered in the StorageChange payload",
+      datetime: "2026-06-03T08:00:00Z",
+      author: "newdev",
+      displayName: "New Dev",
+      url: "https://x.com/newdev/status/1005",
+    };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_index: { newValue: nextIndex } }, "local"));
+  });
+  await expect(page.locator(".row")).toHaveCount(5);
+  expect(await page.evaluate(() => window.__storageGets.length)).toBe(initialGets);
+
+  await page.evaluate(() => {
+    window.__localStore.x_likes_index = {};
+    window.__storageListeners.forEach((fn) => fn({ x_likes_state: { newValue: { total: 0 } } }, "local"));
+  });
+  await expect(page.locator(".row")).toHaveCount(5);
+
+  await page.evaluate(() => {
+    const running = { running: true, source: "worker", message: "Page 1" };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: running } }, "local"));
+    const index6 = { ...window.__feedApp.allLikes.reduce((out, item) => {
+      out[item.tweetId] = item.raw;
+      return out;
+    }, {}) };
+    index6["1006"] = {
+      tweetId: "1006",
+      text: "Latest coalesced value",
+      datetime: "2026-06-03T07:00:00Z",
+      author: "six",
+      displayName: "Six",
+      url: "https://x.com/six/status/1006",
+    };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_index: { newValue: index6 } }, "local"));
+  });
+  await expect(page.locator(".row")).toHaveCount(5);
+
+  await page.evaluate(() => {
+    const done = { running: false, done: true, complete: true, message: "Done." };
+    window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: done } }, "local"));
+  });
+  await expect(page.locator(".row")).toHaveCount(6);
 });
 
 test("starts and stops sync through the background worker", async ({ page }) => {

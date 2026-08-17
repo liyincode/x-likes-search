@@ -1,9 +1,10 @@
 const STORAGE_KEY = "x_likes_index";
-const STATE_KEY = "x_likes_state";
 const SYNC_KEY = "x_likes_sync";
 const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
 const RENDER_DEBOUNCE_MS = 200;
+const INDEX_REFRESH_MS = 2000;
+const SYNC_RECONCILE_MS = 10000;
 
 const Core = window.FeedCore;
 const $ = (s) => document.querySelector(s);
@@ -29,6 +30,10 @@ let rawLikes = [];
 let toastTimer = null;
 let historyTimer = null;
 let syncState = {};
+let syncReconcileTimer = null;
+let indexRefreshTimer = null;
+let pendingIndex = null;
+let hasPendingIndex = false;
 
 let cachedBase = null;
 let cachedPipelineKey = null;
@@ -136,6 +141,7 @@ function updateStatus() {
   const sbStatus = els.status.closest(".sb-status");
   if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(syncState.running));
   updateSyncButtons();
+  scheduleSyncReconcile();
 }
 
 function updateSyncButtons() {
@@ -423,12 +429,27 @@ async function toggleSync() {
 
 async function refreshSyncState() {
   const res = await sendToWorker({ type: "SYNC_STATUS" });
+  if (!res?.ok) return;
   const stored = (res && res.state) || {};
   syncState = { ...stored };
   // Page sync only exists in storage; worker sync follows the service worker flag.
   syncState.running =
     stored.source === "page" ? Boolean(stored.running) : Boolean(res && res.running);
   updateStatus();
+}
+
+function scheduleSyncReconcile() {
+  if (!syncState.running) {
+    clearTimeout(syncReconcileTimer);
+    syncReconcileTimer = null;
+    return;
+  }
+  if (syncReconcileTimer) return;
+  syncReconcileTimer = setTimeout(async () => {
+    syncReconcileTimer = null;
+    await refreshSyncState();
+    scheduleSyncReconcile();
+  }, SYNC_RECONCILE_MS);
 }
 
 function copyLink(t, btn) {
@@ -507,13 +528,37 @@ function move(delta) {
   setActive(i, true);
 }
 
-async function load() {
-  const data = await chrome.storage.local.get([STORAGE_KEY, STATE_KEY]);
-  const index = data[STORAGE_KEY] || {};
+function applyIndex(index, resetScroll = true) {
   rawLikes = Object.values(index);
   allLikes = rawLikes.map(Core.normalizeLike);
   invalidatePipelineCache();
-  renderList();
+  renderList(resetScroll);
+}
+
+function flushPendingIndex() {
+  clearTimeout(indexRefreshTimer);
+  indexRefreshTimer = null;
+  if (!hasPendingIndex) return;
+  const index = pendingIndex || {};
+  pendingIndex = null;
+  hasPendingIndex = false;
+  applyIndex(index, false);
+}
+
+function queueIndexRefresh(index) {
+  pendingIndex = index || {};
+  hasPendingIndex = true;
+  if (!syncState.running) {
+    flushPendingIndex();
+    return;
+  }
+  if (indexRefreshTimer) return;
+  indexRefreshTimer = setTimeout(flushPendingIndex, INDEX_REFRESH_MS);
+}
+
+async function load() {
+  const data = await chrome.storage.local.get(STORAGE_KEY);
+  applyIndex(data[STORAGE_KEY] || {});
 }
 
 function exportLikes() {
@@ -624,10 +669,16 @@ function wireEvents() {
       const prevRunning = syncState.running;
       syncState = changes[SYNC_KEY].newValue || {};
       updateStatus();
+      if (!syncState.running) flushPendingIndex();
       if (syncState.done && syncState.error) showToast(syncState.error);
       else if (syncState.done && prevRunning) showToast(syncState.message || "Sync finished");
     }
-    if (changes[STORAGE_KEY] || changes[STATE_KEY]) load();
+    if (changes[STORAGE_KEY]) queueIndexRefresh(changes[STORAGE_KEY].newValue);
+  });
+
+  window.addEventListener("pagehide", () => {
+    clearTimeout(syncReconcileTimer);
+    clearTimeout(indexRefreshTimer);
   });
 }
 
@@ -647,4 +698,6 @@ window.__feedApp = {
   load,
   render: renderList,
   RENDER_DEBOUNCE_MS,
+  INDEX_REFRESH_MS,
+  SYNC_RECONCILE_MS,
 };

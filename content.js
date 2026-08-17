@@ -27,11 +27,22 @@
     }
   }
 
-  async function storageSet(items) {
-    if (!extensionAlive()) return;
+  async function storageSetBestEffort(items) {
+    if (!extensionAlive()) return false;
     try {
       await chrome.storage.local.set(items);
-    } catch (_) {}
+      return true;
+    } catch (error) {
+      console.warn("Could not save optional extension data.", error);
+      return false;
+    }
+  }
+
+  async function storageSetRequired(items) {
+    if (!extensionAlive()) {
+      throw new Error("Extension was reloaded. Refresh the page before syncing again.");
+    }
+    return globalThis.FeedCore.setStorageRequired(chrome.storage.local, items);
   }
 
   // ---- Inject page-world script ASAP ----
@@ -60,7 +71,7 @@
     try {
       if (d.type === "TEMPLATE_CAPTURED") {
         capturedTemplate = d.template;
-        void storageSet({ [TEMPLATE_KEY]: capturedTemplate });
+        void storageSetBestEffort({ [TEMPLATE_KEY]: capturedTemplate });
         while (templateWaiters.length) templateWaiters.shift()(capturedTemplate);
       } else if (d.type === "PAGE_RESULT") {
         const p = pending.get(d.id);
@@ -90,13 +101,23 @@
     return d[STORAGE_KEY] || {};
   }
   async function saveIndex(idx) {
-    await storageSet({ [STORAGE_KEY]: idx });
+    await storageSetRequired({ [STORAGE_KEY]: idx });
   }
   async function setState(patch) {
     const cur = await storageGet(STATE_KEY);
     const next = { ...(cur[STATE_KEY] || {}), ...patch };
-    await storageSet({ [STATE_KEY]: next });
+    await storageSetRequired({ [STATE_KEY]: next });
     return next;
+  }
+
+  function publishSyncState(state) {
+    if (!extensionAlive()) return;
+    try {
+      chrome.runtime.sendMessage(
+        { source: "xls-page", type: "SYNC_STATE", state },
+        () => void chrome.runtime?.lastError
+      );
+    } catch (_) {}
   }
 
   // Mirror coarse sync status into SYNC_KEY so the feed page's status bar can
@@ -106,7 +127,10 @@
   // Stop this run remotely.
   async function setSyncState(patch) {
     const cur = (await storageGet(SYNC_KEY))[SYNC_KEY] || {};
-    await storageSet({ [SYNC_KEY]: { ...cur, ...patch, source: "page" } });
+    const next = { ...cur, ...patch, source: "page" };
+    publishSyncState(next);
+    await storageSetRequired({ [SYNC_KEY]: next });
+    return next;
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -208,13 +232,11 @@
       try {
         body = await pageFetch(url.toString(), headers);
       } catch (e) {
-        setStatus(`Sync error: ${e.message} — stopped.`);
-        break;
+        throw new Error(`Fetch error: ${e.message}.`);
       }
 
       if (body && body.errors && !body.data) {
-        setStatus(`X returned errors: ${JSON.stringify(body.errors).slice(0, 120)}…`);
-        break;
+        throw new Error(`X returned errors: ${JSON.stringify(body.errors).slice(0, 120)}…`);
       }
 
       const { tweets, nextCursor } = parseLikesResponse(body);
@@ -354,7 +376,26 @@
     try {
       res = await syncLikes();
     } catch (e) {
-      res = { ok: false, error: e && e.message };
+      syncing = false;
+      const error = String(e?.message || e || "Sync failed.");
+      setStatus(error);
+      try {
+        await setState({ completed: false });
+      } catch (stateError) {
+        console.error("Could not mark the interrupted page sync as incomplete.", stateError);
+      }
+      try {
+        await setSyncState({
+          running: false,
+          done: true,
+          complete: false,
+          error,
+          message: error,
+        });
+      } catch (syncStateError) {
+        console.error("Could not persist the final page sync error state.", syncStateError);
+      }
+      res = { ok: false, error };
     }
     if (res && res.ok) {
       setFabState("done");

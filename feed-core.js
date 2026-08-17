@@ -65,6 +65,28 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  function formatStorageError(error) {
+    const message = String(error?.message || error || "");
+    if (message.startsWith("Local storage is full.")) return message;
+    if (/quota|quota_bytes|exceed|storage.*full|disk.*full/i.test(message)) {
+      return "Local storage is full. Sync stopped before reporting completion.";
+    }
+    if (/extension context invalidated|context.*invalid/i.test(message)) {
+      return "Extension was reloaded. Refresh the page before syncing again.";
+    }
+    return "Could not save sync data. Sync stopped before reporting completion.";
+  }
+
+  async function setStorageRequired(storageArea, items) {
+    try {
+      await storageArea.set(items);
+    } catch (error) {
+      const storageError = new Error(formatStorageError(error), { cause: error });
+      storageError.code = "XLS_STORAGE_WRITE";
+      throw storageError;
+    }
+  }
+
   function matches(t, q) {
     const terms = words(q);
     if (!terms.length) return true;
@@ -288,6 +310,8 @@
   return {
     escapeHTML,
     normalizeLike,
+    formatStorageError,
+    setStorageRequired,
     matches,
     countMatches,
     ROW_COLLAPSED,
