@@ -100,6 +100,7 @@ declare namespace XLS {
     tweets: LikeRecord[];
     nextCursor: string | null;
     mediaFallbackCount: number;
+    timelineFound: boolean;
   }
 
   interface XMedia {

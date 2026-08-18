@@ -258,10 +258,13 @@ async function syncLoop(template, requestedMode) {
   let added = 0;
   let mediaUpdated = 0;
   let mediaFallbacks = 0;
+  let removed = 0;
   let pages = 0;
   let cursor = null;
   let consecutiveEmpty = 0;
-  let reachedEnd = false;
+  let finished = false;
+  let reachedTail = false;
+  const seenTweetIds = new Set();
 
   await setSyncState({
     running: true,
@@ -272,6 +275,7 @@ async function syncLoop(template, requestedMode) {
     page: 0,
     added: 0,
     mediaUpdated: 0,
+    removed: 0,
     total,
     stopped: false,
     startedAt: Date.now(),
@@ -318,9 +322,25 @@ async function syncLoop(template, requestedMode) {
       return;
     }
 
-    const { tweets, nextCursor, mediaFallbackCount } = FeedCore.parseLikesResponse(body);
+    const { tweets, nextCursor, mediaFallbackCount, timelineFound } = FeedCore.parseLikesResponse(body);
+    if (!timelineFound) {
+      syncing = false;
+      await markIncomplete();
+      await setSyncState({
+        running: false,
+        done: true,
+        complete: false,
+        error: "Could not find the Likes timeline in X's response. No local likes were removed.",
+        page: pages,
+        added,
+        removed: 0,
+        total,
+      });
+      return;
+    }
     pages += 1;
     mediaFallbacks += mediaFallbackCount;
+    for (const tweet of tweets) seenTweetIds.add(tweet.tweetId);
 
     const merged = FeedCore.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
     const newThisPage = merged.added;
@@ -342,14 +362,19 @@ async function syncLoop(template, requestedMode) {
       message: `Page ${pages}: +${newThisPage} (run +${added})`,
     });
 
-    if (!nextCursor || nextCursor === cursor) {
-      reachedEnd = true;
+    if (!nextCursor) {
+      finished = true;
+      reachedTail = true;
+      break;
+    }
+    if (nextCursor === cursor) {
+      finished = true;
       break;
     }
     // Incremental mode trusts that 3 known-only pages means we've caught up to
     // what we already have. Full mode keeps going to the real end.
     if (mode === "incremental" && consecutiveEmpty >= 3) {
-      reachedEnd = true;
+      finished = true;
       break;
     }
     cursor = nextCursor;
@@ -357,11 +382,28 @@ async function syncLoop(template, requestedMode) {
     await interruptibleSleep(PAGE_DELAY);
   }
 
-  // "completed" is true only when we walked to a natural stopping point — used
-  // next run to decide whether to resume a full crawl.
-  const completed = reachedEnd && !stopRequested;
+  // Absence is deletion evidence only after a recognized response was traversed
+  // from the first page to a true tail. Early incremental stops, repeated cursors,
+  // failures, and user stops never remove local records.
+  if (reachedTail && !stopRequested) {
+    for (const tweetId of Object.keys(index)) {
+      if (seenTweetIds.has(tweetId)) continue;
+      delete index[tweetId];
+      removed += 1;
+    }
+    if (removed > 0) {
+      total = Object.keys(index).length;
+      await setLocalRequired({ [STORAGE_KEY]: index });
+    }
+  }
+
+  // "completed" also covers safe incremental/repeated-cursor termination so the
+  // next ordinary sync keeps its existing mode-selection behavior.
+  const completed = finished && !stopRequested;
   const nextState = { ...prevState, lastSyncAt: Date.now(), total, completed };
-  if (completed && needsMediaBackfill) nextState.indexVersion = FeedCore.INDEX_VERSION;
+  if (reachedTail && !stopRequested && needsMediaBackfill) {
+    nextState.indexVersion = FeedCore.INDEX_VERSION;
+  }
   await setLocalRequired({
     [STATE_KEY]: nextState,
   });
@@ -379,12 +421,13 @@ async function syncLoop(template, requestedMode) {
     added,
     mediaUpdated,
     mediaFallbacks,
+    removed,
     total,
     stopped: stopRequested,
     message: stopRequested
       ? `Stopped. +${added} (total ${total}) — sync again to finish.`
       : completed
-      ? `Done. +${added} (total ${total}).`
+      ? `Done. +${added}, -${removed} (total ${total}).`
       : `Paused. +${added} (total ${total}).`,
   });
 }

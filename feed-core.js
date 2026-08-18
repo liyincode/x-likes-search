@@ -423,9 +423,10 @@
       payload?.data?.user?.result?.timeline_v2?.timeline ||
       payload?.data?.user?.result?.timeline?.timeline ||
       null;
-    const instructions = timeline?.instructions || [];
+    const instructions = timeline?.instructions;
+    const timelineFound = Array.isArray(instructions);
 
-    for (const ins of instructions) {
+    for (const ins of instructions || []) {
       if (ins.type === "TimelineReplaceEntry" && ins.entry) {
         const c = ins.entry.content;
         if (c?.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
@@ -483,7 +484,7 @@
       }
     }
 
-    return { tweets, nextCursor, mediaFallbackCount };
+    return { tweets, nextCursor, mediaFallbackCount, timelineFound };
   }
 
   /**

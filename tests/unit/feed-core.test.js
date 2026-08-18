@@ -104,8 +104,26 @@ test("parseLikesResponse extracts tweets, stats, and the bottom cursor", () => {
 });
 
 test("parseLikesResponse tolerates an empty or garbage body", () => {
-  assert.deepEqual(Core.parseLikesResponse({}), { tweets: [], nextCursor: null, mediaFallbackCount: 0 });
-  assert.deepEqual(Core.parseLikesResponse(null), { tweets: [], nextCursor: null, mediaFallbackCount: 0 });
+  assert.deepEqual(Core.parseLikesResponse({}), {
+    tweets: [],
+    nextCursor: null,
+    mediaFallbackCount: 0,
+    timelineFound: false,
+  });
+  assert.deepEqual(Core.parseLikesResponse(null), {
+    tweets: [],
+    nextCursor: null,
+    mediaFallbackCount: 0,
+    timelineFound: false,
+  });
+  assert.deepEqual(Core.parseLikesResponse({
+    data: { user: { result: { timeline_v2: { timeline: { instructions: [] } } } } },
+  }), {
+    tweets: [],
+    nextCursor: null,
+    mediaFallbackCount: 0,
+    timelineFound: true,
+  });
 });
 
 test("parseLikesResponse extracts every photo from a real sanitized multi-photo fixture", () => {

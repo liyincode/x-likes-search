@@ -90,7 +90,7 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     }),
     URL,
     console,
-    setTimeout,
+    setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
     clearTimeout,
   };
   vm.runInNewContext(source, context, { filename: "background.js" });
@@ -186,4 +186,85 @@ test("worker reconciles a stale persisted running state after restart", async ()
   assert.equal(status.state.complete, false);
   assert.match(status.state.error, /interrupted/);
   assert.equal(harness.store.x_likes_sync.running, false);
+});
+
+test("worker removes unseen likes after reaching a recognized timeline tail", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const body = responseBody();
+  body.data.user.result.timeline_v2.timeline.instructions[0].entries = [];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "unliked", capturedAt: 123 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION - 1 },
+  }, null, body);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 20; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(status.state.removed, 1);
+  assert.equal(status.state.total, 0);
+  assert.deepEqual(Object.keys(harness.store.x_likes_index), []);
+  assert.match(status.state.message, /-1/);
+  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
+});
+
+test("worker never removes likes when pagination repeats before the tail", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const body = responseBody();
+  body.data.user.result.timeline_v2.timeline.instructions[0].entries.push({
+    content: { entryType: "TimelineTimelineCursor", cursorType: "Bottom", value: "CURSOR-A" },
+  });
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "seen", capturedAt: 123 },
+      "2": { tweetId: "2", text: "not reached", capturedAt: 124 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION - 1 },
+  }, null, body);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "full" });
+  let status;
+  for (let i = 0; i < 40; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(status.state.removed, 0);
+  assert.ok(harness.store.x_likes_index["2"]);
+  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION - 1);
+});
+
+test("worker preserves local likes when X returns an unrecognized response shape", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "keep me", capturedAt: 123 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+  }, null, { data: {} });
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "full" });
+  let status;
+  for (let i = 0; i < 20; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.match(status.state.error, /Could not find the Likes timeline/);
+  assert.equal(status.state.removed, 0);
+  assert.ok(harness.store.x_likes_index["1"]);
 });

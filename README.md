@@ -72,6 +72,7 @@ If you see an auth error, HTTP 403, or a similar failure, the captured request m
 
 - X loads likes through paginated internal APIs, so very old likes may not always be returned completely.
 - If X rate-limits the sync, wait a few minutes and try again. Progress is saved as pages are synced.
+- A sync removes local records that are no longer liked only after it safely reaches the true end of the recognized Likes timeline. Interrupted or partial syncs never delete local data.
 - If X changes its internal response format, the extension may need an update.
 
 ## Development
