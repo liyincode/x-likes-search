@@ -417,6 +417,10 @@
     const tweets = [];
     let nextCursor = null;
     let mediaFallbackCount = 0;
+    let rawTweetEntryCount = 0;
+    let terminateDirection = null;
+    /** @type {string[]} */
+    const instructionTypes = [];
 
     const payload = /** @type {XLS.LikesResponse | null | undefined} */ (body);
     const timeline =
@@ -427,6 +431,12 @@
     const timelineFound = Array.isArray(instructions);
 
     for (const ins of instructions || []) {
+      if (typeof ins.type === "string" && !instructionTypes.includes(ins.type)) {
+        instructionTypes.push(ins.type);
+      }
+      if (ins.type === "TimelineTerminateTimeline" && typeof ins.direction === "string") {
+        terminateDirection = ins.direction;
+      }
       if (ins.type === "TimelineReplaceEntry" && ins.entry) {
         const c = ins.entry.content;
         if (c?.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
@@ -437,6 +447,7 @@
       for (const entry of entries) {
         const c = entry.content;
         if (c?.entryType === "TimelineTimelineItem" && c.itemContent?.itemType === "TimelineTweet") {
+          rawTweetEntryCount += 1;
           const res = unwrapVisibilityResult(c.itemContent.tweet_results?.result);
           if (!res) continue;
           const tweetId = res.rest_id || res.legacy?.id_str;
@@ -484,7 +495,15 @@
       }
     }
 
-    return { tweets, nextCursor, mediaFallbackCount, timelineFound };
+    return {
+      tweets,
+      nextCursor,
+      mediaFallbackCount,
+      timelineFound,
+      rawTweetEntryCount,
+      instructionTypes,
+      terminateDirection,
+    };
   }
 
   /**

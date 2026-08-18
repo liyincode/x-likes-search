@@ -101,6 +101,9 @@ declare namespace XLS {
     nextCursor: string | null;
     mediaFallbackCount: number;
     timelineFound: boolean;
+    rawTweetEntryCount: number;
+    instructionTypes: string[];
+    terminateDirection: string | null;
   }
 
   interface XMedia {
@@ -160,6 +163,7 @@ declare namespace XLS {
 
   interface XTimelineInstruction {
     type?: string;
+    direction?: string;
     entry?: XTimelineEntry;
     entries?: XTimelineEntry[];
   }

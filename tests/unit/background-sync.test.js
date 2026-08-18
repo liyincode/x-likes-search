@@ -68,6 +68,7 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   let messageListener;
   const writes = [];
   const fetchCalls = [];
+  const debugLogs = [];
   const chrome = {
     runtime: {
       getURL: (file) => `chrome-extension://test/${file}`,
@@ -109,7 +110,11 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     },
     URL,
     AbortController,
-    console,
+    console: {
+      debug(...args) { debugLogs.push(args); },
+      error: console.error.bind(console),
+      warn: console.warn.bind(console),
+    },
     setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
     clearTimeout,
   };
@@ -122,7 +127,7 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     });
   }
 
-  return { store, writes, fetchCalls, send };
+  return { store, writes, fetchCalls, debugLogs, send };
 }
 
 test("worker sync stops and reports an index quota failure", async () => {
@@ -299,6 +304,58 @@ test("worker removes unseen likes after reaching a recognized timeline tail", as
   assert.deepEqual(Object.keys(harness.store.x_likes_index), []);
   assert.match(status.state.message, /-1/);
   assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
+});
+
+test("worker removes a captured cursor only from the first request", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", JSON.stringify({
+    cursor: "STALE-TEMPLATE-CURSOR",
+    count: 40,
+    includePromotedContent: false,
+  }));
+  const pages = [pageBody("1", "CURSOR-A"), pageBody("2", null)];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {},
+    x_likes_state: { completed: false, indexVersion: Core.INDEX_VERSION },
+  }, null, ({ call }) => pages[call - 1]);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 30; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(status.state.complete, true);
+  assert.equal(harness.fetchCalls.length, 2);
+  const firstVariables = JSON.parse(new URL(harness.fetchCalls[0].url).searchParams.get("variables"));
+  const secondVariables = JSON.parse(new URL(harness.fetchCalls[1].url).searchParams.get("variables"));
+  assert.deepEqual(firstVariables, { count: 40, includePromotedContent: false });
+  assert.deepEqual(secondVariables, {
+    count: 40,
+    includePromotedContent: false,
+    cursor: "CURSOR-A",
+  });
+
+  const firstDiagnostic = JSON.parse(JSON.stringify(
+    harness.debugLogs.find((args) => args[0] === "Likes sync page")[1]
+  ));
+  assert.deepEqual(firstDiagnostic, {
+    page: 1,
+    templateHasCursor: true,
+    requestCursorPresent: false,
+    cursorAdvanced: true,
+    instructionTypes: ["TimelineAddEntries"],
+    rawTweetEntryCount: 1,
+    parsedTweetCount: 1,
+    unparsedTweetEntryCount: 0,
+    newSeenCount: 1,
+    terminateDirection: null,
+  });
+  assert.equal(JSON.stringify(harness.debugLogs).includes("STALE-TEMPLATE-CURSOR"), false);
+  assert.equal(JSON.stringify(harness.debugLogs).includes("CURSOR-A"), false);
 });
 
 test("ordinary sync continues through known pages to reconcile the true tail", async () => {

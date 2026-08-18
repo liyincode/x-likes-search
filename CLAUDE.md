@@ -59,7 +59,7 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 
 ## Two fragile spots tied to X's internals
 
-- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, and the bottom cursor. It is consumed by the service-worker sync and unit tests. It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update it when extraction breaks.
+- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, the bottom cursor, and non-sensitive response-shape diagnostics (`instructionTypes`, raw tweet-entry count, terminate direction). It is consumed by the service-worker sync and unit tests. It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update it when extraction breaks.
 - **`LIKES_URL_RE` in `inject.js`** (`/graphql/<hash>/Likes`) matches the endpoint regardless of the rotating query hash, so capture survives X's hash churn. The sync loops mutate only the `cursor` field inside the URL's `variables` JSON param, preserving everything else X sent. (Note: the *stored template URL* still pins a specific hash; if X rotates it the replay can 404, which surfaces as a sync error telling the user to refresh their likes page to recapture.)
 
 ### Sync loop termination & robustness (`background.js`)
@@ -67,5 +67,6 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 The SW `syncLoop` paginates until any of: no `nextCursor`, the cursor repeats, an exhausted-retry/permanent fetch error, GraphQL errors-without-data, or the user hits Stop. A user-facing Sync always traverses toward the natural tail so its contract is to reconcile both newly liked and unliked posts. Hardening:
 - **Timeout/retry/backoff** (`fetchPage`): each page request has a 30-second timeout and is aborted immediately when the user stops. Transient failures (timeouts, network errors, HTTP 429, 5xx) retry with backoff (`RETRY_BACKOFF`, honoring `Retry-After`) so one blip doesn't abort a long crawl; permanent failures (401/403/404 — usually a stale template) fail fast with a "refresh your likes page" hint.
 - **Single sync contract**: every run starts at the current Likes head and continues to the true tail. `Done` is reported only after reaching that tail; implementation modes are not exposed to users.
+- **Clean sync origin**: capture may persist a paginated Likes request, so `syncLoop` removes the captured `variables.cursor` from its base variables. Only cursors returned during the current run may be used after the first request.
 - **Safe reconciliation**: collect every returned tweet ID, but remove unseen local records only when the response contains a recognized instructions array and pagination reaches a true no-cursor tail. Repeated cursors, failures, and user stops never delete records.
 - It dedupes by `tweetId` and saves the index after every page, so progress survives SW termination and re-runs resume.

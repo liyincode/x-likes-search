@@ -256,6 +256,9 @@ async function syncLoop(template) {
   } catch {
     variables = {};
   }
+  const templateHasCursor = Object.hasOwn(variables, "cursor");
+  const baseVariables = { ...variables };
+  delete baseVariables.cursor;
 
   const index = (await getLocal(STORAGE_KEY))[STORAGE_KEY] || {};
   const prevState = (await getLocal(STATE_KEY))[STATE_KEY] || {};
@@ -292,7 +295,7 @@ async function syncLoop(template) {
   await setLocalRequired({ [SYNC_KEY]: initialSyncState });
 
   while (!stopRequested) {
-    const vars = { ...variables };
+    const vars = { ...baseVariables };
     if (cursor) vars.cursor = cursor;
     url.searchParams.set("variables", JSON.stringify(vars));
 
@@ -331,7 +334,32 @@ async function syncLoop(template) {
       return;
     }
 
-    const { tweets, nextCursor, mediaFallbackCount, timelineFound } = FeedCore.parseLikesResponse(body);
+    const {
+      tweets,
+      nextCursor,
+      mediaFallbackCount,
+      timelineFound,
+      rawTweetEntryCount,
+      instructionTypes,
+      terminateDirection,
+    } = FeedCore.parseLikesResponse(body);
+    const seenBeforePage = seenTweetIds.size;
+    if (timelineFound) {
+      for (const tweet of tweets) seenTweetIds.add(tweet.tweetId);
+    }
+    const newSeenCount = seenTweetIds.size - seenBeforePage;
+    console.debug("Likes sync page", {
+      page: pages + 1,
+      templateHasCursor,
+      requestCursorPresent: Boolean(cursor),
+      cursorAdvanced: Boolean(nextCursor && nextCursor !== cursor),
+      instructionTypes,
+      rawTweetEntryCount,
+      parsedTweetCount: tweets.length,
+      unparsedTweetEntryCount: Math.max(0, rawTweetEntryCount - tweets.length),
+      newSeenCount,
+      terminateDirection,
+    });
     if (!timelineFound) {
       syncing = false;
       await markIncomplete();
@@ -349,7 +377,6 @@ async function syncLoop(template) {
     }
     pages += 1;
     mediaFallbacks += mediaFallbackCount;
-    for (const tweet of tweets) seenTweetIds.add(tweet.tweetId);
 
     const merged = FeedCore.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
     added += merged.added;

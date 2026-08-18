@@ -91,7 +91,7 @@ test("parseLikesResponse extracts tweets, stats, and the bottom cursor", () => {
       },
     },
   };
-  const { tweets, nextCursor } = Core.parseLikesResponse(sample);
+  const { tweets, nextCursor, rawTweetEntryCount, instructionTypes, terminateDirection } = Core.parseLikesResponse(sample);
   assert.equal(nextCursor, "CURSOR123");
   assert.equal(tweets.length, 1);
   assert.equal(tweets[0].tweetId, "1");
@@ -101,6 +101,43 @@ test("parseLikesResponse extracts tweets, stats, and the bottom cursor", () => {
   assert.equal(tweets[0].likes, 5);
   assert.equal(tweets[0].reposts, 2);
   assert.equal(tweets[0].url, "https://x.com/alice/status/1");
+  assert.equal(rawTweetEntryCount, 1);
+  assert.deepEqual(instructionTypes, ["TimelineAddEntries"]);
+  assert.equal(terminateDirection, null);
+});
+
+test("parseLikesResponse reports timeline diagnostics without treating unparsed entries as empty", () => {
+  const body = {
+    data: {
+      user: {
+        result: {
+          timeline_v2: {
+            timeline: {
+              instructions: [
+                {
+                  type: "TimelineAddEntries",
+                  entries: [{
+                    content: {
+                      entryType: "TimelineTimelineItem",
+                      itemContent: { itemType: "TimelineTweet", tweet_results: {} },
+                    },
+                  }],
+                },
+                { type: "TimelineTerminateTimeline", direction: "Bottom" },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const parsed = Core.parseLikesResponse(body);
+
+  assert.equal(parsed.rawTweetEntryCount, 1);
+  assert.equal(parsed.tweets.length, 0);
+  assert.deepEqual(parsed.instructionTypes, ["TimelineAddEntries", "TimelineTerminateTimeline"]);
+  assert.equal(parsed.terminateDirection, "Bottom");
 });
 
 test("parseLikesResponse tolerates an empty or garbage body", () => {
@@ -109,12 +146,18 @@ test("parseLikesResponse tolerates an empty or garbage body", () => {
     nextCursor: null,
     mediaFallbackCount: 0,
     timelineFound: false,
+    rawTweetEntryCount: 0,
+    instructionTypes: [],
+    terminateDirection: null,
   });
   assert.deepEqual(Core.parseLikesResponse(null), {
     tweets: [],
     nextCursor: null,
     mediaFallbackCount: 0,
     timelineFound: false,
+    rawTweetEntryCount: 0,
+    instructionTypes: [],
+    terminateDirection: null,
   });
   assert.deepEqual(Core.parseLikesResponse({
     data: { user: { result: { timeline_v2: { timeline: { instructions: [] } } } } },
@@ -123,6 +166,9 @@ test("parseLikesResponse tolerates an empty or garbage body", () => {
     nextCursor: null,
     mediaFallbackCount: 0,
     timelineFound: true,
+    rawTweetEntryCount: 0,
+    instructionTypes: [],
+    terminateDirection: null,
   });
 });
 
