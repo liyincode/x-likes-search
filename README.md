@@ -36,7 +36,7 @@ If you cloned this repo instead, choose the repo folder directly when clicking *
 3. Click the **X Likes Search** extension icon in the Chrome toolbar.
 4. Click **sync** in the top-right corner of the search page.
 
-After syncing, you can search your liked tweets or switch to **Photos** to browse liked images.
+The status bar shows the current page and how many likes have been checked. After syncing, you can search your liked tweets or switch to **Photos** to browse liked images.
 
 ### Search liked tweets
 

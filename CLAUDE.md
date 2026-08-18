@@ -53,7 +53,7 @@ Key-name constants are **duplicated** across files and must stay identical:
 - `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts`, photo-only `media[]`, and `mediaSource` when media came from a wrapped source tweet. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model — keep that mapping in sync with what the parser writes.
 - `x_likes_state` — `{ lastSyncAt, total, completed, indexVersion }`. `completed` records whether the last crawl reached a natural end; `indexVersion` advances only after a complete crawl has backfilled stored records.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
-- `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, page, added, removed, total, message, error, stopped, startedAt }`. The worker also keeps the latest value in memory so a storage failure can still be reported through `SYNC_STATUS`.
+- `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, page, checked, added, removed, total, message, error, stopped, startedAt }`. The worker also keeps the latest value in memory so a storage failure can still be reported through `SYNC_STATUS`.
 
 The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-updates an open feed tab (both new tweets and the status line). Index updates consume `StorageChange.newValue` directly and are coalesced while a sync is running; sync-state changes do not reload the full index. Critical index/state/status writes must reject on failure rather than allowing the sync to report completion.
 
@@ -65,7 +65,7 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 ### Sync loop termination & robustness (`background.js`)
 
 The SW `syncLoop` paginates until any of: no `nextCursor`, the cursor repeats, an exhausted-retry/permanent fetch error, GraphQL errors-without-data, or the user hits Stop. A user-facing Sync always traverses toward the natural tail so its contract is to reconcile both newly liked and unliked posts. Hardening:
-- **Retry/backoff** (`fetchPage`): transient failures (network errors, HTTP 429, 5xx) retry with backoff (`RETRY_BACKOFF`, honoring `Retry-After`) so one blip doesn't abort a long crawl; permanent failures (401/403/404 — usually a stale template) fail fast with a "refresh your likes page" hint.
+- **Timeout/retry/backoff** (`fetchPage`): each page request has a 30-second timeout and is aborted immediately when the user stops. Transient failures (timeouts, network errors, HTTP 429, 5xx) retry with backoff (`RETRY_BACKOFF`, honoring `Retry-After`) so one blip doesn't abort a long crawl; permanent failures (401/403/404 — usually a stale template) fail fast with a "refresh your likes page" hint.
 - **Single sync contract**: every run starts at the current Likes head and continues to the true tail. `Done` is reported only after reaching that tail; implementation modes are not exposed to users.
 - **Safe reconciliation**: collect every returned tweet ID, but remove unseen local records only when the response contains a recognized instructions array and pagination reaches a true no-cursor tail. Repeated cursors, failures, and user stops never delete records.
 - It dedupes by `tweetId` and saves the index after every page, so progress survives SW termination and re-runs resume.

@@ -149,7 +149,7 @@ function updateStatus() {
       ? `${galleryItems.length} photos from ${new Set(galleryItems.map((item) => item.likedTweet.tweetId)).size} likes`
       : `${allLikes.length} liked`;
   if (syncState.running) {
-    els.status.textContent = `Syncing… ${allLikes.length} liked`;
+    els.status.textContent = `Syncing… ${syncState.message || "Preparing request…"}`;
   } else if (syncState.error) {
     els.status.textContent = syncState.error;
   } else if (syncState.done && syncState.message) {

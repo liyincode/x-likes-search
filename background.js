@@ -17,6 +17,7 @@ const SYNC_KEY = "x_likes_sync"; // transient progress, watched by the feed page
 
 // Backoff schedule (ms) for transient fetch failures. Length = max retries/page.
 const RETRY_BACKOFF = [2000, 5000, 10000, 20000];
+const FETCH_TIMEOUT_MS = 30000;
 const PAGE_DELAY = 700; // politeness between successful pages
 
 // ---- Toolbar click → open/focus the feed ----
@@ -37,6 +38,7 @@ chrome.action.onClicked.addListener(async () => {
 let syncing = false;
 let stopRequested = false;
 let liveSyncState = null;
+let activeFetchController = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -149,19 +151,33 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
     if (stopRequested) throw new Error("stopped");
 
     let res;
+    let text;
+    const controller = new AbortController();
+    activeFetchController = controller;
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      res = await fetch(requestUrl, { method, headers, credentials: "include" });
+      res = await fetch(requestUrl, {
+        method,
+        headers,
+        credentials: "include",
+        signal: controller.signal,
+      });
+      text = await res.text();
     } catch (e) {
-      if (attempt >= RETRY_BACKOFF.length) throw new Error(`network error: ${e.message}`);
+      if (stopRequested) throw new Error("stopped");
+      const failure = e?.name === "AbortError" ? "request timed out" : `network error: ${e.message}`;
+      if (attempt >= RETRY_BACKOFF.length) throw new Error(failure);
       await setSyncState({
         running: true,
-        message: `Page ${pageNum + 1}: network error — retry ${attempt + 1}/${RETRY_BACKOFF.length}…`,
+        message: `Page ${pageNum + 1} · ${failure} · retry ${attempt + 1}/${RETRY_BACKOFF.length}…`,
       });
       await interruptibleSleep(RETRY_BACKOFF[attempt]);
       continue;
+    } finally {
+      clearTimeout(timeoutId);
+      if (activeFetchController === controller) activeFetchController = null;
     }
 
-    const text = await res.text();
     let body;
     try {
       body = JSON.parse(text);
@@ -269,7 +285,8 @@ async function syncLoop(template) {
     total,
     stopped: false,
     startedAt: Date.now(),
-    message: "Starting sync…",
+    checked: 0,
+    message: "Preparing request…",
   };
   liveSyncState = initialSyncState;
   await setLocalRequired({ [SYNC_KEY]: initialSyncState });
@@ -335,7 +352,6 @@ async function syncLoop(template) {
     for (const tweet of tweets) seenTweetIds.add(tweet.tweetId);
 
     const merged = FeedCore.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
-    const newThisPage = merged.added;
     added += merged.added;
     mediaUpdated += merged.mediaUpdated;
     total += merged.added;
@@ -346,8 +362,9 @@ async function syncLoop(template) {
       page: pages,
       added,
       mediaUpdated,
+      checked: seenTweetIds.size,
       total,
-      message: `Page ${pages}: +${newThisPage} (run +${added})`,
+      message: `Page ${pages} · ${seenTweetIds.size} checked · +${added}`,
     });
 
     if (!nextCursor) {
@@ -402,6 +419,7 @@ async function syncLoop(template) {
     mediaUpdated,
     mediaFallbacks,
     removed,
+    checked: seenTweetIds.size,
     total,
     stopped: stopRequested,
     message: stopRequested
@@ -423,6 +441,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === "STOP_SYNC") {
     stopRequested = true;
+    activeFetchController?.abort();
     sendResponse({ ok: true });
     return false;
   }

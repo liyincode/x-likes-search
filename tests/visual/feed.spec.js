@@ -330,10 +330,10 @@ test("starts and stops sync through the background worker", async ({ page }) => 
 
   // Worker reports progress via storage → status + button reflect it live.
   await page.evaluate(() => {
-    window.__localStore.x_likes_sync = { running: true, message: "Page 2: +30 (run +30)", total: 34 };
+    window.__localStore.x_likes_sync = { running: true, message: "Page 2 · 60 checked · +30", checked: 60, total: 34 };
     window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
   });
-  await expect(page.locator("#sb-status")).toContainText("Syncing…");
+  await expect(page.locator("#sb-status")).toHaveText("Syncing… Page 2 · 60 checked · +30");
   await expect(page.locator("#open-likes")).toHaveText("stop");
 
   // Clicking while running sends STOP_SYNC.

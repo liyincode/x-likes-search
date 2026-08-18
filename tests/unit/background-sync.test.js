@@ -108,6 +108,7 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
       };
     },
     URL,
+    AbortController,
     console,
     setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
     clearTimeout,
@@ -155,6 +156,71 @@ test("worker sync stops and reports an index quota failure", async () => {
   assert.equal(harness.store.x_likes_index["1"], undefined);
   assert.equal(harness.store.x_likes_state.completed, false);
   assert.equal(harness.store.x_likes_state.indexVersion, undefined);
+});
+
+test("worker times out a stalled page instead of staying in syncing state", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {},
+    x_likes_state: { completed: false },
+  }, null, ({ init }) => new Promise((resolve, reject) => {
+    init.signal.addEventListener("abort", () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    });
+  }));
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 100; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(status.running, false);
+  assert.equal(status.state.complete, false);
+  assert.match(status.state.error, /timed out/);
+  assert.equal(harness.fetchCalls.length, 5);
+});
+
+test("worker stop aborts the active page request", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  let requestAborted = false;
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {},
+    x_likes_state: { completed: false },
+  }, null, ({ init }) => new Promise((resolve, reject) => {
+    init.signal.addEventListener("abort", () => {
+      requestAborted = true;
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    });
+  }));
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  for (let i = 0; i < 20 && harness.fetchCalls.length === 0; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  await harness.send({ source: "xls-feed", type: "STOP_SYNC" });
+
+  let status;
+  for (let i = 0; i < 20; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(requestAborted, true);
+  assert.equal(status.running, false);
+  assert.equal(status.state.stopped, true);
+  assert.equal(status.state.complete, false);
 });
 
 test("worker forces a full media backfill and upgrades the index only at the natural end", async () => {
@@ -266,6 +332,7 @@ test("ordinary sync continues through known pages to reconcile the true tail", a
 
   assert.equal(harness.fetchCalls.length, 4);
   assert.equal(status.state.complete, true);
+  assert.equal(status.state.checked, 4);
   assert.equal(status.state.removed, 1);
   assert.equal(harness.store.x_likes_index.stale, undefined);
 });
