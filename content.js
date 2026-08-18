@@ -212,8 +212,12 @@
     }
 
     const index = await loadIndex();
+    const prevState = (await storageGet(STATE_KEY))[STATE_KEY] || {};
+    const needsMediaBackfill = Number(prevState.indexVersion || 0) < globalThis.FeedCore.INDEX_VERSION;
     let totalCount = Object.keys(index).length;
     let added = 0;
+    let mediaUpdated = 0;
+    let mediaFallbacks = 0;
     let pages = 0;
     let cursor = null;
     let consecutiveEmpty = 0;
@@ -221,7 +225,14 @@
 
     setStatus("Starting sync…");
     setFabCount(totalCount); // show the cached total right away, then climb
-    await setSyncState({ running: true, done: false, error: null, message: "Syncing…" });
+    await setSyncState({
+      running: true,
+      done: false,
+      error: null,
+      mode: needsMediaBackfill ? "full" : "incremental",
+      mediaUpdated: 0,
+      message: "Syncing…",
+    });
 
     while (!stopRequested) {
       const vars = { ...variables };
@@ -239,18 +250,15 @@
         throw new Error(`X returned errors: ${JSON.stringify(body.errors).slice(0, 120)}…`);
       }
 
-      const { tweets, nextCursor } = parseLikesResponse(body);
+      const { tweets, nextCursor, mediaFallbackCount } = parseLikesResponse(body);
       pages += 1;
+      mediaFallbacks += mediaFallbackCount;
 
-      let newThisPage = 0;
-      for (const t of tweets) {
-        if (!index[t.tweetId]) {
-          index[t.tweetId] = t;
-          added += 1;
-          totalCount += 1;
-          newThisPage += 1;
-        }
-      }
+      const merged = globalThis.FeedCore.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
+      const newThisPage = merged.added;
+      added += merged.added;
+      mediaUpdated += merged.mediaUpdated;
+      totalCount += merged.added;
       await saveIndex(index);
 
       if (newThisPage === 0) consecutiveEmpty += 1;
@@ -268,7 +276,7 @@
         break;
       }
       // If we keep getting only known tweets, assume we've caught up.
-      if (consecutiveEmpty >= 3) {
+      if (!needsMediaBackfill && consecutiveEmpty >= 3) {
         reachedEnd = true;
         break;
       }
@@ -278,7 +286,15 @@
     }
 
     const completed = reachedEnd && !stopRequested;
-    await setState({ lastSyncAt: Date.now(), total: totalCount, completed });
+    await setState({
+      lastSyncAt: Date.now(),
+      total: totalCount,
+      completed,
+      ...(completed && needsMediaBackfill ? { indexVersion: globalThis.FeedCore.INDEX_VERSION } : {}),
+    });
+    if (mediaFallbacks > 0) {
+      console.warn(`Used retweet media fallback for ${mediaFallbacks} liked posts.`);
+    }
     const finalStatus = stopRequested
       ? `Stopped — ${totalCount} liked (+${added})`
       : `Done — ${totalCount} liked (+${added})`;
@@ -287,6 +303,8 @@
       running: false,
       done: true,
       complete: completed,
+      mediaUpdated,
+      mediaFallbacks,
       message: stopRequested
         ? "Stopped."
         : completed

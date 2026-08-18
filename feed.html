@@ -41,10 +41,15 @@
           <button data-sort="oldest" aria-pressed="false">oldest</button>
           <button data-sort="author" aria-pressed="false">author</button>
         </div>
+        <div class="viewgrp" id="view-mode" aria-label="View mode">
+          <button data-mode="posts" aria-pressed="true">posts</button>
+          <button data-mode="photos" aria-pressed="false">photos</button>
+        </div>
       </div>
 
       <div class="feed-scroll" id="feed-scroll">
         <div class="results" id="results"></div>
+        <div class="gallery" id="gallery" hidden></div>
         <div id="empty"></div>
       </div>
     </div>
@@ -54,15 +59,37 @@
         <span class="sb-status"><span class="sb-dot"></span><span id="sb-status">0 liked · local only</span></span>
         <span class="sb-grow"></span>
         <span class="sb-hints">
-          <span><span class="key">↵</span><span class="key">↓</span> next</span>
-          <span><span class="key">↑</span> prev</span>
-          <span><span class="key">⌘</span><span class="key">↵</span> open</span>
+          <span class="posts-hints"><span class="key">↵</span><span class="key">↓</span> next</span>
+          <span class="posts-hints"><span class="key">↑</span> prev</span>
+          <span class="posts-hints"><span class="key">⌘</span><span class="key">↵</span> open</span>
+          <span class="photos-hints"><span class="key">←</span><span class="key">→</span> browse</span>
           <span><span class="key">esc</span> clear</span>
         </span>
       </div>
     </div>
 
     <div class="toast" id="toast"><span class="ic">✓</span><span id="toast-txt">Link copied</span></div>
+
+    <div class="lightbox" id="lightbox" hidden aria-hidden="true">
+      <button class="lb-backdrop" data-lightbox-close aria-label="Close photo preview"></button>
+      <div class="lb-panel" role="dialog" aria-modal="true" aria-label="Photo preview">
+        <button class="lb-close" data-lightbox-close aria-label="Close photo preview">×</button>
+        <div class="lb-stage">
+          <button class="lb-nav lb-prev" data-lightbox-move="-1" aria-label="Previous photo">←</button>
+          <img id="lb-image" alt="" referrerpolicy="no-referrer" />
+          <div class="lb-error" id="lb-error">Image unavailable</div>
+          <button class="lb-nav lb-next" data-lightbox-move="1" aria-label="Next photo">→</button>
+        </div>
+        <div class="lb-footer">
+          <div class="lb-meta">
+            <strong id="lb-author"></strong>
+            <span id="lb-handle"></span>
+          </div>
+          <span class="lb-count" id="lb-count"></span>
+          <button class="mini primary" id="lb-open">open on X ↗</button>
+        </div>
+      </div>
+    </div>
 
     <script src="feed-core.js"></script>
     <script src="feed.js"></script>

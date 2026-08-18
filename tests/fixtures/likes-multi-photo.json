@@ -1,0 +1,78 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "timeline_v2": {
+          "timeline": {
+            "instructions": [
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "tweet-example",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "Tweet",
+                            "rest_id": "1000000000000000001",
+                            "legacy": {
+                              "full_text": "Example liked post with multiple photos.",
+                              "created_at": "Wed Jun 03 10:00:00 +0000 2026",
+                              "extended_entities": {
+                                "media": [
+                                  {
+                                    "type": "photo",
+                                    "media_url_https": "https://pbs.twimg.com/media/example-1.jpg",
+                                    "original_info": { "height": 2160, "width": 3840 },
+                                    "ext_alt_text": "Example alt text 1",
+                                    "sizes": { "large": { "h": 1152, "resize": "fit", "w": 2048 } }
+                                  },
+                                  {
+                                    "type": "photo",
+                                    "media_url_https": "https://pbs.twimg.com/media/example-2.jpg",
+                                    "original_info": { "height": 2160, "width": 3840 },
+                                    "sizes": { "large": { "h": 1152, "resize": "fit", "w": 2048 } }
+                                  },
+                                  {
+                                    "type": "photo",
+                                    "media_url_https": "https://pbs.twimg.com/media/example-3.jpg",
+                                    "original_info": { "height": 2160, "width": 3840 },
+                                    "sizes": { "large": { "h": 1152, "resize": "fit", "w": 2048 } }
+                                  },
+                                  {
+                                    "type": "photo",
+                                    "media_url_https": "https://pbs.twimg.com/media/example-4.jpg",
+                                    "original_info": { "height": 2160, "width": 3840 },
+                                    "sizes": { "large": { "h": 1152, "resize": "fit", "w": 2048 } }
+                                  }
+                                ]
+                              }
+                            },
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "legacy": {
+                                    "screen_name": "example_artist",
+                                    "name": "Example Artist",
+                                    "profile_image_url_https": "https://pbs.twimg.com/profile_images/example.jpg"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

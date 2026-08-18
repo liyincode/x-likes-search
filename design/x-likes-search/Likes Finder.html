@@ -116,7 +116,7 @@
   .h-item:hover .x { opacity: 1; }
 
   /* filters */
-  .filters { display: flex; align-items: center; gap: 8px; margin: 16px 2px 6px; flex-wrap: wrap; }
+  .filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 2px 6px; flex-wrap: wrap; }
   .chip {
     font-family: var(--mono); font-size: 11.5px; color: var(--txt-2);
     background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
@@ -129,9 +129,9 @@
     background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%237a7a8a' fill='none' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 10px center; }
   .fgrow { flex: 1; }
-  .sortgrp { display: inline-flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
-  .sortgrp button { font-family: var(--mono); font-size: 11.5px; color: var(--txt-3); background: none; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
-  .sortgrp button[aria-pressed="true"] { background: var(--panel-hi); color: var(--txt); }
+  .sortgrp, .viewgrp { display: inline-flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .sortgrp button, .viewgrp button { font-family: var(--mono); font-size: 11.5px; color: var(--txt-3); background: none; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .sortgrp button[aria-pressed="true"], .viewgrp button[aria-pressed="true"] { background: var(--panel-hi); color: var(--txt); }
 
   /* results */
   .results { margin-top: 12px; }
@@ -229,13 +229,14 @@
     </div>
 
     <div class="filters">
-      <button class="chip" id="media-only"><span class="k">media</span> only</button>
-      <select class="chip" id="author"></select>
-      <div class="fgrow"></div>
       <div class="sortgrp" id="sort">
         <button data-sort="newest" aria-pressed="true">newest</button>
         <button data-sort="oldest" aria-pressed="false">oldest</button>
         <button data-sort="author" aria-pressed="false">author</button>
+      </div>
+      <div class="viewgrp" aria-label="View mode">
+        <button aria-pressed="true">posts</button>
+        <button aria-pressed="false">photos</button>
       </div>
     </div>
 
@@ -283,7 +284,7 @@
 <script>
 (function () {
   const ALL = window.LIKED;
-  const state = { q: "", sort: "newest", mediaOnly: false, author: "all", active: -1 };
+  const state = { q: "", sort: "newest", active: -1 };
   let view = [];
   const $ = (s) => document.querySelector(s);
   const results = $("#results"), emptyBox = $("#empty"), mc = $("#mc"), input = $("#q");
@@ -305,11 +306,6 @@
   let initTheme = "dark";
   try { const s = localStorage.getItem("finder-theme"); if (s) initTheme = s; } catch (e) {}
   applyTheme(initTheme);
-
-  /* ---------- author dropdown ---------- */
-  const authSel = $("#author");
-  authSel.innerHTML = '<option value="all">all authors</option>' +
-    Core.authors(ALL).map((a) => `<option value="${a.handle}">@${a.handle}</option>`).join("");
 
   /* ---------- search history ---------- */
   function getHistory() { try { return JSON.parse(localStorage.getItem("finder-history") || "[]"); } catch (e) { return []; } }
@@ -443,8 +439,6 @@
     [...e.currentTarget.children].forEach((x) => x.setAttribute("aria-pressed", x === b));
     render();
   });
-  $("#media-only").addEventListener("click", (e) => { state.mediaOnly = !state.mediaOnly; e.currentTarget.classList.toggle("on", state.mediaOnly); render(); });
-  authSel.addEventListener("change", () => { state.author = authSel.value; render(); });
 
   $("#show-onboard").addEventListener("click", () => $("#onboard").classList.add("show"));
   $("#ob-close").addEventListener("click", () => $("#onboard").classList.remove("show"));

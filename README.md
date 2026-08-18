@@ -2,7 +2,7 @@
 
 [中文说明](README.zh-CN.md)
 
-A Chrome extension for searching tweets you have liked on X / Twitter.
+A Chrome extension for searching tweets you have liked on X / Twitter and browsing their photos in a local gallery.
 
 If you use likes as bookmarks, finding an old liked tweet later usually means scrolling your Likes page forever. X Likes Search syncs your liked tweets locally and lets you search them by keyword.
 
@@ -37,7 +37,7 @@ If you cloned this repo instead, choose the repo folder directly when clicking *
 3. Click the **X Likes Search** extension icon in the Chrome toolbar.
 4. Click **sync** in the search page to start syncing your liked tweets.
 
-After syncing, you can search your liked tweets directly from the extension page.
+After syncing, you can search your liked tweets or switch to **Photos** to browse liked images.
 
 ### Search liked tweets
 
@@ -46,6 +46,14 @@ After syncing, you can search your liked tweets directly from the extension page
 - Sort by newest, oldest, or author.
 - Double-click a tweet card to open the original tweet.
 - Click **sync** again later to sync incrementally. Existing tweets are skipped.
+
+### Browse liked photos
+
+- Switch from **Posts** to **Photos** to see every photo from the currently filtered likes.
+- Search and sorting apply to the source posts before their photos are shown.
+- Click a photo for a larger preview, then use the arrow keys or on-screen controls to move through the full result set.
+- Photos stay linked to their source post, so **open on X** takes you back to the original context.
+- After upgrading from a version before `0.5.0`, run one full sync to add photo metadata to likes already stored locally.
 
 ## FAQ
 

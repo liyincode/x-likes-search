@@ -35,7 +35,7 @@ The hard part of this codebase is that code runs in three isolated JavaScript co
 
 3. **Service worker — `background.js`** (`importScripts("feed-core.js")`). This is where the **primary sync runs**. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })` directly: the extension's `host_permissions` make the browser attach the user's x.com cookies, and the captured `x-csrf-token`/bearer headers authenticate the call. No x.com tab is involved, so it survives redirects/navigation. It owns pagination, retry/backoff, and writes progress to `x_likes_sync`.
 
-4. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that renders the search UI and **drives a sync by messaging the service worker** (no tab juggling).
+4. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that renders the searchable Posts view, independent Photos gallery/lightbox, and **drives a sync by messaging the service worker** (no tab juggling).
 
 ### Message protocols
 
@@ -54,8 +54,8 @@ Two separate channels — keep the string constants in sync across files:
 ### Storage schema (`chrome.storage.local`)
 
 Key-name constants are **duplicated** across files and must stay identical:
-- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts` counts when X provides them. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model (`{ author: {name, handle, hue, avatar}, date, stats, … }`) — keep that mapping in sync with what the parser writes.
-- `x_likes_state` — `{ lastSyncAt, total, completed }`. `completed` records whether the last crawl reached a natural end; the SW reads it to auto-pick `full` mode and resume an interrupted crawl.
+- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts`, photo-only `media[]`, and `mediaSource` when media came from a wrapped source tweet. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model — keep that mapping in sync with what the parser writes.
+- `x_likes_state` — `{ lastSyncAt, total, completed, indexVersion }`. `completed` records whether the last crawl reached a natural end; `indexVersion` forces one full crawl when stored records need schema backfill and advances only after reaching the natural tail.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
 - `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, mode, page, added, total, message, error, stopped, startedAt }`. The worker also keeps the latest value in memory so a storage failure can still be reported through `SYNC_STATUS`.
 
@@ -63,12 +63,12 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 
 ## Two fragile spots tied to X's internals
 
-- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets and the bottom cursor. **Single source of truth** — used by both `content.js` (on-page button path) and `background.js` (SW sync). It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update here, nowhere else, when extraction breaks.
+- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, and the bottom cursor. **Single source of truth** — used by both `content.js` (on-page button path) and `background.js` (SW sync). It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update here, nowhere else, when extraction breaks.
 - **`LIKES_URL_RE` in `inject.js`** (`/graphql/<hash>/Likes`) matches the endpoint regardless of the rotating query hash, so capture survives X's hash churn. The sync loops mutate only the `cursor` field inside the URL's `variables` JSON param, preserving everything else X sent. (Note: the *stored template URL* still pins a specific hash; if X rotates it the replay can 404, which surfaces as a sync error telling the user to refresh their likes page to recapture.)
 
 ### Sync loop termination & robustness (`background.js`)
 
 The SW `syncLoop` paginates until any of: no `nextCursor`, the cursor repeats, (incremental mode only) 3 consecutive pages add zero new tweets, an exhausted-retry/permanent fetch error, GraphQL errors-without-data, or the user hits Stop. Hardening:
 - **Retry/backoff** (`fetchPage`): transient failures (network errors, HTTP 429, 5xx) retry with backoff (`RETRY_BACKOFF`, honoring `Retry-After`) so one blip doesn't abort a long crawl; permanent failures (401/403/404 — usually a stale template) fail fast with a "refresh your likes page" hint.
-- **Modes**: `incremental` early-stops at the known top of the feed; `full` paginates to the true tail. Auto-picks `full` when the index is empty or the last run didn't complete (`!state.completed`), which self-heals an interrupted crawl. Clearing the cache forces the next sync to be `full`.
+- **Modes**: `incremental` early-stops at the known top of the feed; `full` paginates to the true tail. Auto-picks `full` when the index is empty, the last run didn't complete (`!state.completed`), or `indexVersion` needs a media backfill. Clearing the cache forces the next sync to be `full`.
 - It dedupes by `tweetId` and saves the index after every page, so progress survives SW termination and re-runs resume.

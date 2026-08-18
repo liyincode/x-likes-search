@@ -249,10 +249,15 @@ async function syncLoop(template, requestedMode) {
   // there's nothing indexed yet or the last run didn't finish — that self-heals
   // an interrupted crawl instead of stopping short forever.
   const empty = Object.keys(index).length === 0;
-  const mode = requestedMode || (empty || !prevState.completed ? "full" : "incremental");
+  const needsMediaBackfill = Number(prevState.indexVersion || 0) < FeedCore.INDEX_VERSION;
+  const mode = needsMediaBackfill
+    ? "full"
+    : requestedMode || (empty || !prevState.completed ? "full" : "incremental");
 
   let total = Object.keys(index).length;
   let added = 0;
+  let mediaUpdated = 0;
+  let mediaFallbacks = 0;
   let pages = 0;
   let cursor = null;
   let consecutiveEmpty = 0;
@@ -267,6 +272,7 @@ async function syncLoop(template, requestedMode) {
     mode,
     page: 0,
     added: 0,
+    mediaUpdated: 0,
     total,
     stopped: false,
     startedAt: Date.now(),
@@ -313,18 +319,15 @@ async function syncLoop(template, requestedMode) {
       return;
     }
 
-    const { tweets, nextCursor } = FeedCore.parseLikesResponse(body);
+    const { tweets, nextCursor, mediaFallbackCount } = FeedCore.parseLikesResponse(body);
     pages += 1;
+    mediaFallbacks += mediaFallbackCount;
 
-    let newThisPage = 0;
-    for (const t of tweets) {
-      if (!index[t.tweetId]) {
-        index[t.tweetId] = t;
-        added += 1;
-        total += 1;
-        newThisPage += 1;
-      }
-    }
+    const merged = FeedCore.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
+    const newThisPage = merged.added;
+    added += merged.added;
+    mediaUpdated += merged.mediaUpdated;
+    total += merged.added;
     await setLocalRequired({ [STORAGE_KEY]: index });
 
     if (newThisPage === 0) consecutiveEmpty += 1;
@@ -335,6 +338,7 @@ async function syncLoop(template, requestedMode) {
       mode,
       page: pages,
       added,
+      mediaUpdated,
       total,
       message: `Page ${pages}: +${newThisPage} (run +${added})`,
     });
@@ -357,10 +361,15 @@ async function syncLoop(template, requestedMode) {
   // "completed" is true only when we walked to a natural stopping point — used
   // next run to decide whether to resume a full crawl.
   const completed = reachedEnd && !stopRequested;
+  const nextState = { ...prevState, lastSyncAt: Date.now(), total, completed };
+  if (completed && needsMediaBackfill) nextState.indexVersion = FeedCore.INDEX_VERSION;
   await setLocalRequired({
-    [STATE_KEY]: { ...prevState, lastSyncAt: Date.now(), total, completed },
+    [STATE_KEY]: nextState,
   });
   syncing = false;
+  if (mediaFallbacks > 0) {
+    console.warn(`Used retweet media fallback for ${mediaFallbacks} liked posts.`);
+  }
   await setSyncState({
     running: false,
     done: true,
@@ -369,6 +378,8 @@ async function syncLoop(template, requestedMode) {
     mode,
     page: pages,
     added,
+    mediaUpdated,
+    mediaFallbacks,
     total,
     stopped: stopRequested,
     message: stopRequested

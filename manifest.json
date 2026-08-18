@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X Likes Search",
-  "version": "0.4.7",
-  "description": "Index your X (Twitter) likes locally via GraphQL capture-and-replay, then browse them in an X-styled feed with instant keyword search.",
+  "version": "0.5.0",
+  "description": "Index your X (Twitter) likes locally, then search them in an X-styled feed or browse liked photos in a gallery.",
   "permissions": ["storage", "unlimitedStorage", "activeTab", "scripting", "tabs"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
   "icons": {

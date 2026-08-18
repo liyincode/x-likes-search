@@ -51,7 +51,7 @@ function responseBody() {
   };
 }
 
-function createHarness(initialStore, setImpl) {
+function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   const store = structuredClone(initialStore);
   let messageListener;
   const writes = [];
@@ -86,7 +86,7 @@ function createHarness(initialStore, setImpl) {
       ok: true,
       status: 200,
       headers: { get() { return null; } },
-      async text() { return JSON.stringify(responseBody()); },
+      async text() { return JSON.stringify(fetchBody); },
     }),
     URL,
     console,
@@ -135,6 +135,43 @@ test("worker sync stops and reports an index quota failure", async () => {
   assert.match(status.state.error, /Local storage is full/);
   assert.equal(harness.store.x_likes_index["1"], undefined);
   assert.equal(harness.store.x_likes_state.completed, false);
+  assert.equal(harness.store.x_likes_state.indexVersion, undefined);
+});
+
+test("worker forces a full media backfill and upgrades the index only at the natural end", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const body = responseBody();
+  const result = body.data.user.result.timeline_v2.timeline.instructions[0].entries[0].content.itemContent.tweet_results.result;
+  result.legacy.extended_entities = {
+    media: [{
+      type: "photo",
+      media_url_https: "https://pbs.twimg.com/media/example.jpg",
+      original_info: { width: 1200, height: 800 },
+    }],
+  };
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "existing", capturedAt: 123 },
+    },
+    x_likes_state: { completed: true, indexVersion: 1 },
+  }, null, body);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "incremental" });
+  let status;
+  for (let i = 0; i < 20; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(status.state.mode, "full");
+  assert.equal(status.state.mediaUpdated, 1);
+  assert.equal(harness.store.x_likes_index["1"].capturedAt, 123);
+  assert.equal(harness.store.x_likes_index["1"].media.length, 1);
+  assert.equal(harness.store.x_likes_state.completed, true);
+  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
 });
 
 test("worker reconciles a stale persisted running state after restart", async () => {

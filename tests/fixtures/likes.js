@@ -10,6 +10,22 @@ exports.index = {
     capturedAt: 1780000000001,
     likes: 193,
     reposts: 76,
+    media: [
+      {
+        type: "photo",
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Crect width='800' height='800' fill='%235c7cfa'/%3E%3Ccircle cx='400' cy='400' r='190' fill='%23a5d8ff'/%3E%3C/svg%3E",
+        width: 800,
+        height: 800,
+        altText: "Blue abstract circle",
+      },
+      {
+        type: "photo",
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Crect width='800' height='800' fill='%237047bf'/%3E%3Cpath d='M120 620L400 140l280 480z' fill='%23e5dbff'/%3E%3C/svg%3E",
+        width: 800,
+        height: 800,
+        altText: "Purple abstract triangle",
+      },
+    ],
   },
   "1002": {
     tweetId: "1002",
@@ -21,6 +37,15 @@ exports.index = {
     url: "https://x.com/elenacodes/status/1002",
     capturedAt: 1780000000002,
     likes: 70,
+    media: [
+      {
+        type: "photo",
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Crect width='800' height='800' fill='%230879f1'/%3E%3Cpath d='M0 560Q240 300 440 520T800 440V800H0z' fill='%238ce99a'/%3E%3C/svg%3E",
+        width: 800,
+        height: 800,
+        altText: "Green abstract landscape",
+      },
+    ],
   },
   "1003": {
     tweetId: "1003",
@@ -31,6 +56,15 @@ exports.index = {
     avatar: "",
     url: "https://x.com/rentanaka/status/1003",
     capturedAt: 1780000000003,
+    media: [
+      {
+        type: "photo",
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Crect width='800' height='800' fill='%23f59f00'/%3E%3Crect x='180' y='180' width='440' height='440' rx='90' fill='%23fff3bf'/%3E%3C/svg%3E",
+        width: 800,
+        height: 800,
+        altText: "Orange abstract square",
+      },
+    ],
   },
   "1004": {
     tweetId: "1004",
@@ -47,4 +81,5 @@ exports.index = {
 exports.state = {
   lastSyncAt: 1780440000000,
   total: 4,
+  indexVersion: 2,
 };

@@ -7,6 +7,7 @@
   // Virtual list row heights (px) — tuned to match .row / .row.active in feed.css.
   const ROW_COLLAPSED = 56;
   const ROW_ACTIVE_EXPANDED = 128;
+  const INDEX_VERSION = 2;
 
   function escapeHTML(s) {
     return String(s ?? "")
@@ -49,6 +50,23 @@
     const likes = optionalNumber(item.likes);
     const reposts = optionalNumber(item.reposts);
     if (item.media) out.media = item.media;
+    if (item.mediaSource) {
+      const source = item.mediaSource;
+      const sourceHandle = source.author || "";
+      const sourceName = source.displayName || sourceHandle || "Unknown";
+      out.mediaSource = {
+        tweetId: source.tweetId || "",
+        text: source.text || "",
+        date: source.datetime || "",
+        author: {
+          name: sourceName,
+          handle: sourceHandle,
+          hue: hashHue(sourceHandle || sourceName),
+          avatar: source.avatar || "",
+        },
+        url: source.url || "",
+      };
+    }
     if (likes !== null || reposts !== null) {
       out.stats = {
         likes,
@@ -63,6 +81,56 @@
     if (value === null || value === undefined || value === "") return null;
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
+  }
+
+  function mediaUrl(url, size) {
+    if (String(url || "").startsWith("data:")) return String(url);
+    try {
+      const out = new URL(url);
+      out.searchParams.set("name", size);
+      return out.toString();
+    } catch {
+      return String(url || "");
+    }
+  }
+
+  function flattenPhotoItems(tweets) {
+    const items = [];
+    for (const likedTweet of tweets) {
+      const tweet = likedTweet.mediaSource || likedTweet;
+      for (let mediaIndex = 0; mediaIndex < (likedTweet.media || []).length; mediaIndex += 1) {
+        items.push({ likedTweet, tweet, media: likedTweet.media[mediaIndex], mediaIndex });
+      }
+    }
+    return items;
+  }
+
+  function mergeLikes(index, tweets, options = {}) {
+    const updateMedia = Boolean(options.updateMedia);
+    let added = 0;
+    let mediaUpdated = 0;
+    for (const tweet of tweets) {
+      const existing = index[tweet.tweetId];
+      if (!existing) {
+        index[tweet.tweetId] = tweet;
+        added += 1;
+        continue;
+      }
+      if (!updateMedia || !tweet.media?.length) continue;
+      const before = JSON.stringify([existing.media || null, existing.mediaSource || null]);
+      const after = JSON.stringify([tweet.media, tweet.mediaSource || null]);
+      if (before === after) continue;
+      const next = {
+        ...existing,
+        media: tweet.media,
+        capturedAt: existing.capturedAt,
+      };
+      if (tweet.mediaSource) next.mediaSource = tweet.mediaSource;
+      else delete next.mediaSource;
+      index[tweet.tweetId] = next;
+      mediaUpdated += 1;
+    }
+    return { added, mediaUpdated };
   }
 
   function formatStorageError(error) {
@@ -246,6 +314,7 @@
   function parseLikesResponse(body) {
     const tweets = [];
     let nextCursor = null;
+    let mediaFallbackCount = 0;
 
     const timeline =
       body?.data?.user?.result?.timeline_v2?.timeline ||
@@ -285,7 +354,9 @@
             "";
           const likes = res.legacy?.favorite_count;
           const reposts = res.legacy?.retweet_count;
-          tweets.push({
+          const mediaResult = extractPhotoMedia(res);
+          if (mediaResult.fallback) mediaFallbackCount += 1;
+          const tweet = {
             tweetId,
             text,
             datetime,
@@ -296,7 +367,12 @@
             capturedAt: Date.now(),
             ...(Number.isFinite(likes) ? { likes } : {}),
             ...(Number.isFinite(reposts) ? { reposts } : {}),
-          });
+            ...(mediaResult.media.length ? { media: mediaResult.media } : {}),
+          };
+          if (mediaResult.fallback && mediaResult.source) {
+            tweet.mediaSource = tweetIdentity(mediaResult.source);
+          }
+          tweets.push(tweet);
         }
         if (c.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
           nextCursor = c.value;
@@ -304,12 +380,66 @@
       }
     }
 
-    return { tweets, nextCursor };
+    return { tweets, nextCursor, mediaFallbackCount };
+  }
+
+  function unwrapVisibilityResult(result) {
+    if (result?.__typename === "TweetWithVisibilityResults" && result.tweet) return result.tweet;
+    return result;
+  }
+
+  function tweetIdentity(result) {
+    const tweetId = result?.rest_id || result?.legacy?.id_str || "";
+    const legacy = result?.legacy || {};
+    const user = result?.core?.user_results?.result;
+    const author = user?.legacy?.screen_name || user?.core?.screen_name || "";
+    return {
+      tweetId,
+      text: result?.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || "",
+      datetime: legacy.created_at || null,
+      author,
+      displayName: user?.legacy?.name || user?.core?.name || "",
+      avatar: user?.legacy?.profile_image_url_https || user?.avatar?.image_url || "",
+      url: `https://x.com/${author || "i"}/status/${tweetId}`,
+    };
+  }
+
+  function extractPhotoMedia(result) {
+    const outer = result?.legacy;
+    let source = result;
+    let legacy = outer;
+    let fallback = false;
+    if (!outer?.extended_entities?.media?.length) {
+      const retweet = unwrapVisibilityResult(outer?.retweeted_status_result?.result);
+      if (retweet?.legacy?.extended_entities?.media?.length) {
+        source = retweet;
+        legacy = retweet.legacy;
+        fallback = true;
+      }
+    }
+    const media = (legacy?.extended_entities?.media || [])
+      .filter((item) => item?.type === "photo" && item.media_url_https)
+      .map((item) => {
+        const width = Number(item.original_info?.width ?? item.sizes?.large?.w);
+        const height = Number(item.original_info?.height ?? item.sizes?.large?.h);
+        return {
+          type: "photo",
+          url: item.media_url_https,
+          width: Number.isFinite(width) ? width : 0,
+          height: Number.isFinite(height) ? height : 0,
+          altText: item.ext_alt_text || "",
+        };
+      });
+    return { media, fallback, source: fallback ? source : null };
   }
 
   return {
     escapeHTML,
     normalizeLike,
+    INDEX_VERSION,
+    mediaUrl,
+    flattenPhotoItems,
+    mergeLikes,
     formatStorageError,
     setStorageRequired,
     matches,

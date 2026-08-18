@@ -1,10 +1,12 @@
 const STORAGE_KEY = "x_likes_index";
+const STATE_KEY = "x_likes_state";
 const SYNC_KEY = "x_likes_sync";
 const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
 const RENDER_DEBOUNCE_MS = 200;
 const INDEX_REFRESH_MS = 2000;
 const SYNC_RECONCILE_MS = 10000;
+const GALLERY_BATCH_SIZE = 60;
 
 const Core = window.FeedCore;
 const $ = (s) => document.querySelector(s);
@@ -13,20 +15,32 @@ const els = {
   q: $("#q"),
   feedScroll: $("#feed-scroll"),
   results: $("#results"),
+  gallery: $("#gallery"),
   empty: $("#empty"),
   count: $("#mc"),
   status: $("#sb-status"),
   history: $("#history"),
   sort: $("#sort"),
+  viewMode: $("#view-mode"),
   theme: $("#theme-btn"),
   toast: $("#toast"),
   toastText: $("#toast-txt"),
+  lightbox: $("#lightbox"),
+  lightboxImage: $("#lb-image"),
+  lightboxError: $("#lb-error"),
+  lightboxAuthor: $("#lb-author"),
+  lightboxHandle: $("#lb-handle"),
+  lightboxCount: $("#lb-count"),
 };
 
-const state = { q: "", sort: "newest", active: -1 };
+const state = { q: "", sort: "newest", mode: "posts", active: -1 };
 let allLikes = [];
 let view = [];
 let rawLikes = [];
+let indexState = {};
+let galleryItems = [];
+let galleryRendered = 0;
+let lightboxIndex = -1;
 let toastTimer = null;
 let historyTimer = null;
 let syncState = {};
@@ -129,14 +143,18 @@ function initTheme() {
 }
 
 function updateStatus() {
+  const localCount =
+    state.mode === "photos"
+      ? `${galleryItems.length} photos from ${new Set(galleryItems.map((item) => item.likedTweet.tweetId)).size} likes`
+      : `${allLikes.length} liked`;
   if (syncState.running) {
     els.status.textContent = `Syncing… ${allLikes.length} liked`;
   } else if (syncState.error) {
     els.status.textContent = syncState.error;
   } else if (syncState.done && syncState.message) {
-    els.status.textContent = `${allLikes.length} liked · ${syncState.message}`;
+    els.status.textContent = `${localCount} · ${syncState.message}`;
   } else {
-    els.status.textContent = `${allLikes.length} liked · local only`;
+    els.status.textContent = `${localCount} · local only`;
   }
   const sbStatus = els.status.closest(".sb-status");
   if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(syncState.running));
@@ -181,6 +199,11 @@ function updateSyncButtons() {
 
 function updateCount(baseLen) {
   if (state.q) {
+    if (state.mode === "photos") {
+      els.count.innerHTML = `<b>${galleryItems.length}</b> photos in ${view.length} likes`;
+      els.count.style.display = "";
+      return;
+    }
     const idx = state.active >= 0 ? state.active + 1 : 0;
     els.count.innerHTML = `<b>${idx}</b> / ${view.length} in ${allLikes.length}`;
     els.count.style.display = "";
@@ -237,6 +260,63 @@ function rowHTML(t, i) {
     </div>`;
 }
 
+function galleryCardHTML(item, i) {
+  const alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
+  return `<button class="gallery-card" data-gallery-i="${i}" aria-label="${Core.escapeHTML(alt)}">
+    <img src="${Core.escapeHTML(Core.mediaUrl(item.media.url, "small"))}" alt="${Core.escapeHTML(alt)}" loading="lazy" referrerpolicy="no-referrer" />
+    <span class="gallery-placeholder">image unavailable</span>
+    <span class="gallery-meta">
+      <strong>${Core.escapeHTML(item.tweet.author.name)}</strong>
+      <span>${Core.escapeHTML(Core.relativeDate(item.tweet.date, appNow()))}</span>
+    </span>
+  </button>`;
+}
+
+function appendGalleryBatch() {
+  if (galleryRendered >= galleryItems.length) return;
+  const end = Math.min(galleryRendered + GALLERY_BATCH_SIZE, galleryItems.length);
+  const parts = [];
+  for (let i = galleryRendered; i < end; i += 1) parts.push(galleryCardHTML(galleryItems[i], i));
+  els.gallery.insertAdjacentHTML("beforeend", parts.join(""));
+  galleryRendered = end;
+}
+
+function renderLightbox() {
+  const item = galleryItems[lightboxIndex];
+  if (!item) {
+    closeLightbox();
+    return;
+  }
+  els.lightbox.querySelector(".lb-stage").classList.remove("is-error");
+  els.lightboxImage.alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
+  els.lightboxImage.src = Core.mediaUrl(item.media.url, "large");
+  els.lightboxAuthor.textContent = item.tweet.author.name;
+  els.lightboxHandle.textContent = item.tweet.author.handle ? `@${item.tweet.author.handle}` : "";
+  els.lightboxCount.textContent = `${lightboxIndex + 1} / ${galleryItems.length}`;
+}
+
+function openLightbox(i) {
+  if (!galleryItems[i]) return;
+  lightboxIndex = i;
+  els.lightbox.hidden = false;
+  els.lightbox.setAttribute("aria-hidden", "false");
+  renderLightbox();
+  els.lightbox.querySelector(".lb-close").focus();
+}
+
+function closeLightbox() {
+  lightboxIndex = -1;
+  els.lightbox.hidden = true;
+  els.lightbox.setAttribute("aria-hidden", "true");
+  els.lightboxImage.removeAttribute("src");
+}
+
+function moveLightbox(delta) {
+  if (lightboxIndex < 0 || !galleryItems.length) return;
+  lightboxIndex = (lightboxIndex + delta + galleryItems.length) % galleryItems.length;
+  renderLightbox();
+}
+
 function ensureVirtualDOM() {
   if (virtualSpacer && virtualWindow && els.results.contains(virtualSpacer)) return;
   els.results.innerHTML =
@@ -284,11 +364,17 @@ function wireResultsEvents() {
   });
 
   els.feedScroll.addEventListener("scroll", () => {
+    if (state.mode === "photos") {
+      const remaining = els.feedScroll.scrollHeight - els.feedScroll.scrollTop - els.feedScroll.clientHeight;
+      if (remaining < 500) appendGalleryBatch();
+      return;
+    }
     cancelAnimationFrame(paintRaf);
     paintRaf = requestAnimationFrame(() => paintVisible(false));
   });
 
   window.addEventListener("resize", () => {
+    if (state.mode !== "posts") return;
     cancelAnimationFrame(paintRaf);
     paintRaf = requestAnimationFrame(() => paintVisible(false));
   });
@@ -330,7 +416,7 @@ function listViewport() {
 }
 
 function paintVisible(resetScroll) {
-  if (!view.length || !virtualWindow) return;
+  if (state.mode !== "posts" || !view.length || !virtualWindow) return;
 
   rebuildRowLayout();
   if (resetScroll) els.feedScroll.scrollTop = els.results.offsetTop;
@@ -366,6 +452,7 @@ function scrollToActive() {
 }
 
 function setActive(i, scroll) {
+  if (state.mode !== "posts") return;
   state.active = i;
   if (!view.length) return;
   paintVisible(false);
@@ -476,11 +563,25 @@ function rebuildView() {
 }
 
 function renderEmptyState() {
-  els.results.innerHTML = "";
   els.results.style.display = "none";
+  els.gallery.hidden = true;
+
+  if (state.mode === "photos") {
+    els.gallery.innerHTML = "";
+    galleryRendered = 0;
+    if (Number(indexState.indexVersion || 0) < Core.INDEX_VERSION) {
+      els.empty.innerHTML = `<div class="empty"><div class="big">Photos need indexing</div><p>Run a full sync once to add photos to your existing likes.</p></div>`;
+    } else if (state.q) {
+      els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+    } else {
+      els.empty.innerHTML = `<div class="empty"><div class="big">No liked photos</div><p>Your indexed likes do not contain photos yet.</p></div>`;
+    }
+    return;
+  }
+
+  els.results.innerHTML = "";
   virtualSpacer = null;
   virtualWindow = null;
-
   if (allLikes.length) {
     els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
   } else {
@@ -495,11 +596,8 @@ function renderEmptyState() {
   }
 }
 
-function renderList(resetScroll = true) {
-  rebuildView();
-  updateStatus();
-  updateCount(getCachedBase().length);
-
+function renderPosts(resetScroll) {
+  els.gallery.hidden = true;
   if (!view.length) {
     renderEmptyState();
     return;
@@ -511,17 +609,42 @@ function renderList(resetScroll = true) {
   paintVisible(resetScroll);
 }
 
+function renderGallery(resetScroll) {
+  els.results.style.display = "none";
+  if (!galleryItems.length) {
+    renderEmptyState();
+    return;
+  }
+  els.empty.innerHTML = "";
+  els.gallery.hidden = false;
+  els.gallery.innerHTML = "";
+  galleryRendered = 0;
+  appendGalleryBatch();
+  if (resetScroll) els.feedScroll.scrollTop = els.gallery.offsetTop;
+}
+
+function renderCurrentMode(resetScroll = true) {
+  rebuildView();
+  galleryItems = state.mode === "photos" ? Core.flattenPhotoItems(view) : [];
+  if (lightboxIndex >= galleryItems.length) closeLightbox();
+  document.body.dataset.mode = state.mode;
+  updateStatus();
+  updateCount(getCachedBase().length);
+  if (state.mode === "photos") renderGallery(resetScroll);
+  else renderPosts(resetScroll);
+}
+
 function scheduleRender(resetScroll = true) {
   const gen = ++renderGen;
   clearTimeout(renderTimer);
   renderTimer = setTimeout(() => {
     if (gen !== renderGen) return;
-    renderList(resetScroll);
+    renderCurrentMode(resetScroll);
   }, RENDER_DEBOUNCE_MS);
 }
 
 function move(delta) {
-  if (!view.length) return;
+  if (state.mode !== "posts" || !view.length) return;
   let i = state.active < 0 ? 0 : state.active + delta;
   if (i < 0) i = view.length - 1;
   if (i >= view.length) i = 0;
@@ -532,7 +655,7 @@ function applyIndex(index, resetScroll = true) {
   rawLikes = Object.values(index);
   allLikes = rawLikes.map(Core.normalizeLike);
   invalidatePipelineCache();
-  renderList(resetScroll);
+  renderCurrentMode(resetScroll);
 }
 
 function flushPendingIndex() {
@@ -559,6 +682,12 @@ function queueIndexRefresh(index) {
 async function load() {
   const data = await chrome.storage.local.get(STORAGE_KEY);
   applyIndex(data[STORAGE_KEY] || {});
+}
+
+async function loadIndexState() {
+  const data = await chrome.storage.local.get(STATE_KEY);
+  indexState = data[STATE_KEY] || {};
+  if (state.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
 }
 
 function exportLikes() {
@@ -613,12 +742,25 @@ function wireEvents() {
       state.active = -1;
       els.history.classList.remove("show");
       updateMatchCountPreview();
-      renderList(true);
+      renderCurrentMode(true);
       els.q.focus();
     }
   });
 
   document.addEventListener("keydown", (e) => {
+    if (lightboxIndex >= 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeLightbox();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        moveLightbox(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        moveLightbox(1);
+      }
+      return;
+    }
     if (e.key === "/" && document.activeElement !== els.q) {
       e.preventDefault();
       els.q.focus();
@@ -633,16 +775,19 @@ function wireEvents() {
       state.q = "";
       state.active = -1;
       updateMatchCountPreview();
-      renderList(true);
+      renderCurrentMode(true);
       return;
     }
     if (e.key === "ArrowDown") {
+      if (state.mode !== "posts") return;
       e.preventDefault();
       move(1);
     } else if (e.key === "ArrowUp") {
+      if (state.mode !== "posts") return;
       e.preventDefault();
       move(-1);
     } else if (e.key === "Enter") {
+      if (state.mode !== "posts") return;
       if ((e.metaKey || e.ctrlKey) && state.active >= 0) openTweet(view[state.active]);
       else {
         e.preventDefault();
@@ -657,7 +802,46 @@ function wireEvents() {
     state.sort = btn.dataset.sort;
     [...els.sort.children].forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
     invalidatePipelineCache();
-    renderList(true);
+    renderCurrentMode(true);
+  });
+
+  els.viewMode.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-mode]");
+    if (!btn || btn.dataset.mode === state.mode) return;
+    state.mode = btn.dataset.mode;
+    state.active = -1;
+    [...els.viewMode.children].forEach((item) =>
+      item.setAttribute("aria-pressed", String(item === btn))
+    );
+    closeLightbox();
+    renderCurrentMode(true);
+  });
+
+  els.gallery.addEventListener(
+    "error",
+    (e) => {
+      if (e.target.tagName === "IMG") e.target.closest(".gallery-card")?.classList.add("is-error");
+    },
+    true
+  );
+  els.gallery.addEventListener("click", (e) => {
+    const card = e.target.closest("[data-gallery-i]");
+    if (card) openLightbox(Number(card.dataset.galleryI));
+  });
+  els.lightbox.addEventListener("click", (e) => {
+    if (e.target.closest("[data-lightbox-close]")) {
+      closeLightbox();
+      return;
+    }
+    const move = e.target.closest("[data-lightbox-move]");
+    if (move) moveLightbox(Number(move.dataset.lightboxMove));
+  });
+  els.lightboxImage.addEventListener("error", () => {
+    els.lightbox.querySelector(".lb-stage").classList.add("is-error");
+  });
+  $("#lb-open").addEventListener("click", () => {
+    const item = galleryItems[lightboxIndex];
+    if (item) openTweet(item.tweet);
   });
 
   $("#open-likes").addEventListener("click", toggleSync);
@@ -674,6 +858,10 @@ function wireEvents() {
       else if (syncState.done && prevRunning) showToast(syncState.message || "Sync finished");
     }
     if (changes[STORAGE_KEY]) queueIndexRefresh(changes[STORAGE_KEY].newValue);
+    if (changes[STATE_KEY]) {
+      indexState = changes[STATE_KEY].newValue || {};
+      if (state.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
+    }
   });
 
   window.addEventListener("pagehide", () => {
@@ -685,6 +873,7 @@ function wireEvents() {
 initTheme();
 wireEvents();
 load();
+loadIndexState();
 refreshSyncState();
 
 window.__feedApp = {
@@ -696,8 +885,9 @@ window.__feedApp = {
     return view;
   },
   load,
-  render: renderList,
+  render: renderCurrentMode,
   RENDER_DEBOUNCE_MS,
   INDEX_REFRESH_MS,
   SYNC_RECONCILE_MS,
+  GALLERY_BATCH_SIZE,
 };

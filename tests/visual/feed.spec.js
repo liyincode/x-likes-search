@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, "../..");
 const feedUrl = `file://${path.join(root, "feed.html")}`;
 const designUrl = `file://${path.join(root, "design/x-likes-search/Likes Finder.html")}`;
 
-async function installChromeMock(page, index = fixture.index) {
+async function installChromeMock(page, index = fixture.index, state = fixture.state) {
   await page.addInitScript(({ indexData, stateData }) => {
     window.__XLS_NOW = "2026-06-03T12:00:00Z";
     window.__tabsCreated = [];
@@ -78,11 +78,11 @@ async function installChromeMock(page, index = fixture.index) {
       if (this.download) window.__downloads.push({ download: this.download, href: this.href });
       return originalClick.call(this);
     };
-  }, { indexData: index, stateData: fixture.state });
+  }, { indexData: index, stateData: state });
 }
 
-async function openFeed(page, index) {
-  await installChromeMock(page, index);
+async function openFeed(page, index, state) {
+  await installChromeMock(page, index, state);
   await page.goto(feedUrl);
   await page.waitForSelector(".row");
 }
@@ -345,6 +345,111 @@ test("starts and stops sync through the background worker", async ({ page }) => 
   await page.evaluate(() => { window.__workerResponse = { ok: false, error: "No captured request yet." }; });
   await page.locator("#open-likes").click();
   await expect(page.locator("#toast-txt")).toHaveText("No captured request yet.");
+});
+
+test("browses, searches, navigates, and opens liked photos", async ({ page }) => {
+  await openFeed(page);
+  await page.locator('[data-mode="photos"]').click();
+
+  await expect(page.locator(".gallery-card")).toHaveCount(4);
+  await expect(page.locator("#results")).toBeHidden();
+  await expect(page.locator("#sb-status")).toHaveText("4 photos from 3 likes · local only");
+
+  await page.locator(".gallery-card").first().click();
+  await expect(page.locator("#lightbox")).toBeVisible();
+  await expect(page.locator("#lb-author")).toHaveText("Devon Park");
+  await expect(page.locator("#lb-count")).toHaveText("1 / 4");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#lb-count")).toHaveText("2 / 4");
+  await page.locator("#lb-open").click();
+  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({
+    url: "https://x.com/devonml/status/1001",
+    active: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#lightbox")).toBeHidden();
+
+  await page.locator("#q").fill("Elena");
+  await page.waitForTimeout(250);
+  await expect(page.locator(".gallery-card")).toHaveCount(1);
+  await expect(page.locator("#mc")).toHaveText("1 photos in 1 likes");
+  await expect(page.locator("#sb-status")).toHaveText("1 photos from 1 likes · local only");
+
+  await page.locator("#q").fill("Omar");
+  await page.waitForTimeout(250);
+  await expect(page.locator(".empty .big")).toHaveText("No matching photos");
+});
+
+test("shows gallery image failures and photo indexing empty states", async ({ page }) => {
+  await openFeed(page);
+  await page.locator('[data-mode="photos"]').click();
+  await page.locator(".gallery-card img").first().evaluate((img) => { img.src = "file:///missing-gallery-image.png"; });
+  await expect(page.locator(".gallery-card").first()).toHaveClass(/is-error/);
+  await expect(page.locator(".gallery-card").first().locator(".gallery-placeholder")).toBeVisible();
+
+  const noMediaIndex = {
+    only: {
+      tweetId: "only",
+      text: "Text-only like",
+      datetime: "2026-06-03T10:00:00Z",
+      author: "textonly",
+      displayName: "Text Only",
+      url: "https://x.com/textonly/status/only",
+    },
+  };
+  const second = await page.context().newPage();
+  await openFeed(second, noMediaIndex, { indexVersion: 1, completed: true });
+  await second.locator('[data-mode="photos"]').click();
+  await expect(second.locator(".empty .big")).toHaveText("Photos need indexing");
+  await second.close();
+
+  const third = await page.context().newPage();
+  await openFeed(third, noMediaIndex, { indexVersion: 2, completed: true });
+  await third.locator('[data-mode="photos"]').click();
+  await expect(third.locator(".empty .big")).toHaveText("No liked photos");
+  await third.close();
+});
+
+test("renders gallery photos in batches", async ({ page }) => {
+  const media = Array.from({ length: 1000 }, (_, i) => ({
+    type: "photo",
+    url: `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%235c7cfa'/%3E%3Ctext x='2' y='12'%3E${i}%3C/text%3E%3C/svg%3E`,
+    width: 20,
+    height: 20,
+    altText: `Photo ${i + 1}`,
+  }));
+  const index = {
+    many: {
+      tweetId: "many",
+      text: "Many photos",
+      datetime: "2026-06-03T10:00:00Z",
+      author: "many",
+      displayName: "Many",
+      url: "https://x.com/many/status/many",
+      media,
+    },
+  };
+  await openFeed(page, index, { indexVersion: 2, completed: true });
+  await page.locator('[data-mode="photos"]').click();
+  await expect(page.locator(".gallery-card")).toHaveCount(60);
+  await page.locator("#feed-scroll").evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+    el.dispatchEvent(new Event("scroll"));
+  });
+  await expect(page.locator(".gallery-card")).toHaveCount(120);
+});
+
+test("visual photo states match the Finder direction", async ({ page }) => {
+  await openFeed(page);
+  await page.locator('[data-mode="photos"]').click();
+  await expect(page).toHaveScreenshot("finder-photos-dark.png", { maxDiffPixelRatio: 0.02 });
+  await page.locator(".gallery-card").first().click();
+  await expect(page).toHaveScreenshot("finder-photo-lightbox-dark.png", { maxDiffPixelRatio: 0.02 });
+  await page.keyboard.press("Escape");
+  await page.locator("#theme-btn").click();
+  await expect(page).toHaveScreenshot("finder-photos-light.png", { maxDiffPixelRatio: 0.02 });
+  await page.setViewportSize({ width: 640, height: 700 });
+  await expect(page).toHaveScreenshot("finder-photos-narrow.png", { maxDiffPixelRatio: 0.02 });
 });
 
 test("visual states match the Finder direction with strict thresholds", async ({ page }) => {
