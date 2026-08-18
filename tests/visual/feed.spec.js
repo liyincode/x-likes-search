@@ -368,7 +368,8 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   await expect(page.locator("#results")).toBeHidden();
   await expect(page.locator("#sb-status")).toHaveText("4 photos from 3 likes · local only");
 
-  await page.locator(".gallery-card").first().click();
+  const firstPhoto = page.locator(".gallery-card").first();
+  await firstPhoto.click();
   await expect(page.locator("#lightbox")).toBeVisible();
   await expect(page.locator("#lb-author")).toHaveText("Devon Park");
   await expect(page.locator("#lb-count")).toHaveText("1 / 4");
@@ -381,6 +382,7 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   });
   await page.keyboard.press("Escape");
   await expect(page.locator("#lightbox")).toBeHidden();
+  await expect(firstPhoto).toBeFocused();
 
   await page.locator("#q").fill("Elena");
   await page.waitForTimeout(250);

@@ -51,10 +51,23 @@ function responseBody() {
   };
 }
 
+function pageBody(tweetId, nextCursor) {
+  const body = responseBody();
+  const entries = body.data.user.result.timeline_v2.timeline.instructions[0].entries;
+  entries[0].content.itemContent.tweet_results.result.rest_id = tweetId;
+  if (nextCursor) {
+    entries.push({
+      content: { entryType: "TimelineTimelineCursor", cursorType: "Bottom", value: nextCursor },
+    });
+  }
+  return body;
+}
+
 function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   const store = structuredClone(initialStore);
   let messageListener;
   const writes = [];
+  const fetchCalls = [];
   const chrome = {
     runtime: {
       getURL: (file) => `chrome-extension://test/${file}`,
@@ -82,12 +95,18 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     chrome,
     FeedCore: Core,
     importScripts() {},
-    fetch: async () => ({
-      ok: true,
-      status: 200,
-      headers: { get() { return null; } },
-      async text() { return JSON.stringify(fetchBody); },
-    }),
+    fetch: async (url, init) => {
+      fetchCalls.push({ url, init });
+      const body = typeof fetchBody === "function"
+        ? await fetchBody({ url, init, call: fetchCalls.length })
+        : fetchBody;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get() { return null; } },
+        async text() { return JSON.stringify(body); },
+      };
+    },
     URL,
     console,
     setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
@@ -102,7 +121,7 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     });
   }
 
-  return { store, writes, send };
+  return { store, writes, fetchCalls, send };
 }
 
 test("worker sync stops and reports an index quota failure", async () => {
@@ -158,7 +177,7 @@ test("worker forces a full media backfill and upgrades the index only at the nat
     x_likes_state: { completed: true, indexVersion: 1 },
   }, null, body);
 
-  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "incremental" });
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
   let status;
   for (let i = 0; i < 20; i += 1) {
     status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
@@ -166,7 +185,7 @@ test("worker forces a full media backfill and upgrades the index only at the nat
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 
-  assert.equal(status.state.mode, "full");
+  assert.equal(status.state.mode, undefined);
   assert.equal(status.state.mediaUpdated, 1);
   assert.equal(harness.store.x_likes_index["1"].capturedAt, 123);
   assert.equal(harness.store.x_likes_index["1"].media.length, 1);
@@ -216,6 +235,41 @@ test("worker removes unseen likes after reaching a recognized timeline tail", as
   assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
 });
 
+test("ordinary sync continues through known pages to reconcile the true tail", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const pages = [
+    pageBody("1", "CURSOR-A"),
+    pageBody("2", "CURSOR-B"),
+    pageBody("3", "CURSOR-C"),
+    pageBody("4", null),
+  ];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "one", capturedAt: 1 },
+      "2": { tweetId: "2", text: "two", capturedAt: 2 },
+      "3": { tweetId: "3", text: "three", capturedAt: 3 },
+      "4": { tweetId: "4", text: "four", capturedAt: 4 },
+      stale: { tweetId: "stale", text: "unliked", capturedAt: 5 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+  }, null, ({ call }) => pages[call - 1]);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 40; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(harness.fetchCalls.length, 4);
+  assert.equal(status.state.complete, true);
+  assert.equal(status.state.removed, 1);
+  assert.equal(harness.store.x_likes_index.stale, undefined);
+});
+
 test("worker never removes likes when pagination repeats before the tail", async () => {
   const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
   templateUrl.searchParams.set("variables", "{}");
@@ -232,7 +286,7 @@ test("worker never removes likes when pagination repeats before the tail", async
     x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION - 1 },
   }, null, body);
 
-  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "full" });
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
   let status;
   for (let i = 0; i < 40; i += 1) {
     status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
@@ -241,6 +295,7 @@ test("worker never removes likes when pagination repeats before the tail", async
   }
 
   assert.equal(status.state.removed, 0);
+  assert.equal(status.state.complete, false);
   assert.ok(harness.store.x_likes_index["2"]);
   assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION - 1);
 });
@@ -256,7 +311,7 @@ test("worker preserves local likes when X returns an unrecognized response shape
     x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
   }, null, { data: {} });
 
-  await harness.send({ source: "xls-feed", type: "START_SYNC", mode: "full" });
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
   let status;
   for (let i = 0; i < 20; i += 1) {
     status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });

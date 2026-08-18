@@ -41,6 +41,7 @@ let indexState = {};
 let galleryItems = [];
 let galleryRendered = 0;
 let lightboxIndex = -1;
+let lightboxReturnFocus = null;
 let toastTimer = null;
 let historyTimer = null;
 let syncState = {};
@@ -290,6 +291,7 @@ function renderLightbox() {
 
 function openLightbox(i) {
   if (!galleryItems[i]) return;
+  lightboxReturnFocus = document.activeElement;
   lightboxIndex = i;
   els.lightbox.hidden = false;
   els.lightbox.setAttribute("aria-hidden", "false");
@@ -298,10 +300,15 @@ function openLightbox(i) {
 }
 
 function closeLightbox() {
+  if (els.lightbox.contains(document.activeElement)) {
+    if (lightboxReturnFocus?.isConnected) lightboxReturnFocus.focus();
+    else document.activeElement.blur();
+  }
   lightboxIndex = -1;
   els.lightbox.hidden = true;
   els.lightbox.setAttribute("aria-hidden", "true");
   els.lightboxImage.removeAttribute("src");
+  lightboxReturnFocus = null;
 }
 
 function moveLightbox(delta) {
@@ -562,7 +569,7 @@ function renderEmptyState() {
     els.gallery.innerHTML = "";
     galleryRendered = 0;
     if (Number(indexState.indexVersion || 0) < Core.INDEX_VERSION) {
-      els.empty.innerHTML = `<div class="empty"><div class="big">Photos need indexing</div><p>Run a full sync once to add photos to your existing likes.</p></div>`;
+      els.empty.innerHTML = `<div class="empty"><div class="big">Photos need indexing</div><p>Run sync once to add photos to your existing likes.</p></div>`;
     } else if (state.q) {
       els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
     } else {

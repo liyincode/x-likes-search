@@ -192,7 +192,7 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
   }
 }
 
-async function startSync(requestedMode) {
+async function startSync() {
   if (syncing) return { ok: true, alreadyRunning: true };
   const template = (await getLocal(TEMPLATE_KEY))[TEMPLATE_KEY];
   if (!template || !template.url) {
@@ -207,7 +207,7 @@ async function startSync(requestedMode) {
   // Fire and forget: the loop reports progress through chrome.storage, which the
   // feed page watches via storage.onChanged. We do NOT hold the message channel
   // open for the whole (multi-minute) sync.
-  syncLoop(template, requestedMode).catch(reportSyncFailure);
+  syncLoop(template).catch(reportSyncFailure);
   return { ok: true, started: true };
 }
 
@@ -216,7 +216,7 @@ async function markIncomplete() {
   await setLocalRequired({ [STATE_KEY]: { ...prev, completed: false } });
 }
 
-async function syncLoop(template, requestedMode) {
+async function syncLoop(template) {
   let url;
   try {
     url = new URL(template.url);
@@ -244,15 +244,7 @@ async function syncLoop(template, requestedMode) {
   const index = (await getLocal(STORAGE_KEY))[STORAGE_KEY] || {};
   const prevState = (await getLocal(STATE_KEY))[STATE_KEY] || {};
 
-  // Mode resolution. "incremental" early-stops once we hit the already-known
-  // top of the feed; "full" paginates to the true tail. Auto-pick "full" when
-  // there's nothing indexed yet or the last run didn't finish — that self-heals
-  // an interrupted crawl instead of stopping short forever.
-  const empty = Object.keys(index).length === 0;
   const needsMediaBackfill = Number(prevState.indexVersion || 0) < FeedCore.INDEX_VERSION;
-  const mode = needsMediaBackfill
-    ? "full"
-    : requestedMode || (empty || !prevState.completed ? "full" : "incremental");
 
   let total = Object.keys(index).length;
   let added = 0;
@@ -261,17 +253,15 @@ async function syncLoop(template, requestedMode) {
   let removed = 0;
   let pages = 0;
   let cursor = null;
-  let consecutiveEmpty = 0;
-  let finished = false;
   let reachedTail = false;
+  let repeatedCursor = false;
   const seenTweetIds = new Set();
 
-  await setSyncState({
+  const initialSyncState = {
     running: true,
     done: false,
     complete: false,
     error: null,
-    mode,
     page: 0,
     added: 0,
     mediaUpdated: 0,
@@ -279,8 +269,10 @@ async function syncLoop(template, requestedMode) {
     total,
     stopped: false,
     startedAt: Date.now(),
-    message: `Starting ${mode} sync…`,
-  });
+    message: "Starting sync…",
+  };
+  liveSyncState = initialSyncState;
+  await setLocalRequired({ [SYNC_KEY]: initialSyncState });
 
   while (!stopRequested) {
     const vars = { ...variables };
@@ -349,12 +341,8 @@ async function syncLoop(template, requestedMode) {
     total += merged.added;
     await setLocalRequired({ [STORAGE_KEY]: index });
 
-    if (newThisPage === 0) consecutiveEmpty += 1;
-    else consecutiveEmpty = 0;
-
     await setSyncState({
       running: true,
-      mode,
       page: pages,
       added,
       mediaUpdated,
@@ -363,18 +351,11 @@ async function syncLoop(template, requestedMode) {
     });
 
     if (!nextCursor) {
-      finished = true;
       reachedTail = true;
       break;
     }
     if (nextCursor === cursor) {
-      finished = true;
-      break;
-    }
-    // Incremental mode trusts that 3 known-only pages means we've caught up to
-    // what we already have. Full mode keeps going to the real end.
-    if (mode === "incremental" && consecutiveEmpty >= 3) {
-      finished = true;
+      repeatedCursor = true;
       break;
     }
     cursor = nextCursor;
@@ -383,8 +364,8 @@ async function syncLoop(template, requestedMode) {
   }
 
   // Absence is deletion evidence only after a recognized response was traversed
-  // from the first page to a true tail. Early incremental stops, repeated cursors,
-  // failures, and user stops never remove local records.
+  // from the first page to a true tail. Repeated cursors, failures, and user
+  // stops never remove local records.
   if (reachedTail && !stopRequested) {
     for (const tweetId of Object.keys(index)) {
       if (seenTweetIds.has(tweetId)) continue;
@@ -397,9 +378,7 @@ async function syncLoop(template, requestedMode) {
     }
   }
 
-  // "completed" also covers safe incremental/repeated-cursor termination so the
-  // next ordinary sync keeps its existing mode-selection behavior.
-  const completed = finished && !stopRequested;
+  const completed = reachedTail && !stopRequested;
   const nextState = { ...prevState, lastSyncAt: Date.now(), total, completed };
   if (reachedTail && !stopRequested && needsMediaBackfill) {
     nextState.indexVersion = FeedCore.INDEX_VERSION;
@@ -415,8 +394,9 @@ async function syncLoop(template, requestedMode) {
     running: false,
     done: true,
     complete: completed,
-    error: null,
-    mode,
+    error: repeatedCursor
+      ? "X repeated a pagination cursor before the end. No local likes were removed."
+      : null,
     page: pages,
     added,
     mediaUpdated,
@@ -428,6 +408,8 @@ async function syncLoop(template, requestedMode) {
       ? `Stopped. +${added} (total ${total}) — sync again to finish.`
       : completed
       ? `Done. +${added}, -${removed} (total ${total}).`
+      : repeatedCursor
+      ? "X repeated a pagination cursor before the end. No local likes were removed."
       : `Paused. +${added} (total ${total}).`,
   });
 }
@@ -436,8 +418,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return false;
   if (msg.source !== "xls-feed") return false;
   if (msg.type === "START_SYNC") {
-    // msg.mode is optional ("full" | "incremental"); omitted → auto.
-    startSync(msg.mode).then(sendResponse);
+    startSync().then(sendResponse);
     return true; // async response
   }
   if (msg.type === "STOP_SYNC") {

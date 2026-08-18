@@ -44,7 +44,7 @@ After syncing, you can search your liked tweets or switch to **Photos** to brows
 - Search matches tweet text, display names, and usernames.
 - Sort by newest, oldest, or author.
 - Double-click a tweet card to open the original tweet.
-- Click **sync** again later to sync incrementally. Existing tweets are skipped.
+- Click **sync** again later to make the local index match your current X Likes. Newly liked posts are added and unliked posts are removed after the timeline has been checked to the end.
 
 ### Browse liked photos
 
@@ -52,7 +52,7 @@ After syncing, you can search your liked tweets or switch to **Photos** to brows
 - Search and sorting apply to the source posts before their photos are shown.
 - Click a photo for a larger preview, then use the arrow keys or on-screen controls to move through the full result set.
 - Photos stay linked to their source post, so **open on X** takes you back to the original context.
-- After upgrading from a version before `0.5.0`, run one full sync to add photo metadata to likes already stored locally.
+- After upgrading from a version before `0.5.0`, run sync once to add photo metadata to likes already stored locally.
 
 ## FAQ
 
