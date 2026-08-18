@@ -176,7 +176,7 @@ test("worker forces a full media backfill and upgrades the index only at the nat
 
 test("worker reconciles a stale persisted running state after restart", async () => {
   const harness = createHarness({
-    x_likes_sync: { running: true, source: "worker", message: "Page 3" },
+    x_likes_sync: { running: true, source: "page", message: "Page 3" },
   });
 
   const status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });

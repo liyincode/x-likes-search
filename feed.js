@@ -165,23 +165,16 @@ function updateStatus() {
 function updateSyncButtons() {
   const btn = $("#open-likes");
   const exportBtn = $("#export");
-  const pageSync = syncState.running && syncState.source === "page";
-  const workerSync = syncState.running && !pageSync;
   const empty = allLikes.length === 0;
   const setHidden = (sel, hidden) => {
     const el = $(sel);
     if (el) el.style.display = hidden ? "none" : "";
   };
-  setHidden("#open-likes", empty);
   setHidden("#export", empty);
   setHidden(".filters", empty);
 
   if (btn) {
-    if (pageSync) {
-      btn.textContent = "syncing";
-      btn.disabled = true;
-      btn.title = "Syncing on your X likes tab — use Stop there";
-    } else if (workerSync) {
+    if (syncState.running) {
       btn.textContent = "stop";
       btn.disabled = false;
       btn.title = "Stop sync";
@@ -494,10 +487,6 @@ async function toggleSync() {
   const btn = $("#open-likes");
   if (btn && btn.disabled) return;
   if (syncState.running) {
-    if (syncState.source === "page") {
-      showToast("Syncing on your X tab — click Stop there");
-      return;
-    }
     await sendToWorker({ type: "STOP_SYNC" });
     showToast("Stopping sync…");
     return;
@@ -508,6 +497,11 @@ async function toggleSync() {
     return;
   }
   if (!res.ok) {
+    if (/no captured request/i.test(res.error || "")) {
+      chrome.tabs.create({ url: "https://x.com/i/history/likes", active: true });
+      showToast("Opened X Likes — let it load, then return and sync");
+      return;
+    }
     showToast(res.error || "Could not start sync");
     return;
   }
@@ -519,9 +513,7 @@ async function refreshSyncState() {
   if (!res?.ok) return;
   const stored = (res && res.state) || {};
   syncState = { ...stored };
-  // Page sync only exists in storage; worker sync follows the service worker flag.
-  syncState.running =
-    stored.source === "page" ? Boolean(stored.running) : Boolean(res && res.running);
+  syncState.running = Boolean(res && res.running);
   updateStatus();
 }
 
@@ -589,8 +581,8 @@ function renderEmptyState() {
         <div class="empty">
           <div class="big">No likes indexed yet</div>
           <div class="steps-guide">
-            <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes page</div><div class="ss">Go to <a href="https://x.com" target="_blank" rel="noreferrer">x.com</a> → Profile → Likes.</div></div></div>
-            <div class="step"><div class="n">2</div><div><div class="sb">Click Sync</div><div class="ss">Hit the <b>Sync</b> button under the Likes tab.</div></div></div>
+            <div class="step"><div class="n">1</div><div><div class="sb">Open your X likes page</div><div class="ss">Go to <a href="https://x.com/i/history/likes" target="_blank" rel="noreferrer">History → Likes</a> and let the page load.</div></div></div>
+            <div class="step"><div class="n">2</div><div><div class="sb">Sync from here</div><div class="ss">Return to this tab and click <b>sync</b> in the top-right corner.</div></div></div>
           </div>
         </div>`;
   }

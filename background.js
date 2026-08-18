@@ -96,7 +96,7 @@ async function reportSyncFailure(error) {
 async function currentSyncStatus() {
   if (liveSyncState) return { ok: true, running: syncing, state: liveSyncState };
   const stored = (await getLocal(SYNC_KEY))[SYNC_KEY] || null;
-  if (stored?.running && stored.source !== "page") {
+  if (stored?.running) {
     const message = "Sync was interrupted. Start it again to continue.";
     const interrupted = {
       ...stored,
@@ -268,7 +268,6 @@ async function syncLoop(template, requestedMode) {
     done: false,
     complete: false,
     error: null,
-    source: "worker",
     mode,
     page: 0,
     added: 0,
@@ -392,11 +391,6 @@ async function syncLoop(template, requestedMode) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return false;
-  if (msg.source === "xls-page" && msg.type === "SYNC_STATE") {
-    liveSyncState = { ...(msg.state || {}), source: "page" };
-    sendResponse({ ok: true });
-    return false;
-  }
   if (msg.source !== "xls-feed") return false;
   if (msg.type === "START_SYNC") {
     // msg.mode is optional ("full" | "incremental"); omitted → auto.

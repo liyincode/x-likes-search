@@ -13,7 +13,7 @@ The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is 
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
 - **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
 - **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
-- **Manual test loop:** open `https://x.com/<username>/likes`, refresh once, use the on-page **Sync** button (a pill anchored under the **Likes** tab) — or click **sync** in the X Likes Search tab — then open the feed via the toolbar icon. See `README.md` for the full user-facing flow.
+- **Manual test loop:** open `https://x.com/i/history/likes` and let it load once so the request template is captured, then open the feed via the toolbar icon and click the top-right **sync** button. The extension deliberately adds no controls to X's page.
 
 ### Tests
 
@@ -30,9 +30,8 @@ The hard part of this codebase is that code runs in three isolated JavaScript co
 
 1. **Page world — `inject.js`** (injected by `content.js` via a `<script>` tag, runs at `document_start`). This is the only context with the page's real `fetch`, cookies, and auth state. It:
    - Patches `window.fetch` and `XMLHttpRequest` to detect X's Likes GraphQL call (`LIKES_URL_RE`) and capture its URL + headers.
-   - Acts as a **fetch bridge**: on a `FETCH_PAGE` message it performs the replayed request (with `credentials: "include"`) and posts back `PAGE_RESULT`. Replays must happen here so cookies/auth match what X expects.
 
-2. **Content-script world — `content.js`** (runs at `document_start` on x.com/twitter.com; `feed-core.js` is loaded just before it in the same world). Isolated JS context but has `chrome.storage`. Its main job now is **capture**: inject `inject.js`, own the page↔storage bridge, and persist the captured request template. It still renders an on-page **Sync** control — a pill anchored under the profile's **Likes** tab (positioned inside the "your likes are private" banner via `getBoundingClientRect`, never injected into X's React tree) — and can run a page-world `syncLikes` from it (legacy/fallback path), but the **primary sync no longer lives here** — see below.
+2. **Content-script world — `content.js`** (runs at `document_start` on x.com/twitter.com). It injects `inject.js`, receives `TEMPLATE_CAPTURED`, and persists the request template through `chrome.storage`. It does not render UI or run a sync loop.
 
 3. **Service worker — `background.js`** (`importScripts("feed-core.js")`). This is where the **primary sync runs**. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })` directly: the extension's `host_permissions` make the browser attach the user's x.com cookies, and the captured `x-csrf-token`/bearer headers authenticate the call. No x.com tab is involved, so it survives redirects/navigation. It owns pagination, retry/backoff, and writes progress to `x_likes_sync`.
 
@@ -42,15 +41,11 @@ The hard part of this codebase is that code runs in three isolated JavaScript co
 
 Two separate channels — keep the string constants in sync across files:
 
-**`window.postMessage`** — `content.js` ⇄ `inject.js` (page world ↔ content script), tagged-envelope:
-- `source: "xls"` — page → content: `TEMPLATE_CAPTURED` (captured request), `PAGE_RESULT` (replay response, correlated by `id`).
-- `source: "xls-cmd"` — content → page: `FETCH_PAGE` (replay this URL with these headers).
+**`window.postMessage`** — `inject.js` → `content.js` (page world → content script), tagged-envelope:
+- `source: "xls"`, `type: "TEMPLATE_CAPTURED"` — the captured request template to persist.
 
 **`chrome.runtime.sendMessage`** — `feed.js` → `background.js` (X Likes Search tab → service worker), `source: "xls-feed"`:
 - `START_SYNC` (optional `mode: "full" | "incremental"`) — starts the SW sync and **acks immediately** `{ ok, started }` (or `{ ok, alreadyRunning }`, or `{ ok:false, error }` when no template is captured). It does **not** wait for the multi-minute crawl. `STOP_SYNC` sets a stop flag. `SYNC_STATUS` returns `{ ok, running, state }`. `runtime.sendMessage` reaches the SW and extension pages only — not content scripts — so there is no conflict with `content.js`.
-
-**`chrome.runtime.sendMessage`** — `content.js` → `background.js`, `source: "xls-page"`:
-- `SYNC_STATE` mirrors the fallback page sync into the worker's in-memory state before storage persistence. This lets `feed.js` reconcile a failed status write through `SYNC_STATUS` instead of remaining stuck on a stale `running: true` value.
 
 ### Storage schema (`chrome.storage.local`)
 
@@ -64,7 +59,7 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 
 ## Two fragile spots tied to X's internals
 
-- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, and the bottom cursor. **Single source of truth** — used by both `content.js` (on-page button path) and `background.js` (SW sync). It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update here, nowhere else, when extraction breaks.
+- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, and the bottom cursor. It is consumed by the service-worker sync and unit tests. It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update it when extraction breaks.
 - **`LIKES_URL_RE` in `inject.js`** (`/graphql/<hash>/Likes`) matches the endpoint regardless of the rotating query hash, so capture survives X's hash churn. The sync loops mutate only the `cursor` field inside the URL's `variables` JSON param, preserving everything else X sent. (Note: the *stored template URL* still pins a specific hash; if X rotates it the replay can 404, which surfaces as a sync error telling the user to refresh their likes page to recapture.)
 
 ### Sync loop termination & robustness (`background.js`)

@@ -144,6 +144,15 @@ test("renders Finder shell with storage data", async ({ page }) => {
   await expect(page.locator(".row").first().locator(".av img")).toHaveAttribute("src", /data:image\/svg\+xml/);
 });
 
+test("keeps sync available before the first index and links to History Likes", async ({ page }) => {
+  await installChromeMock(page, {}, { completed: false });
+  await page.goto(feedUrl);
+
+  await expect(page.locator("#open-likes")).toBeVisible();
+  await expect(page.locator("#empty .big")).toHaveText("No likes indexed yet");
+  await expect(page.locator('#empty a[href="https://x.com/i/history/likes"]')).toBeVisible();
+});
+
 test("searches, navigates, opens, clears, and copies", async ({ page, browserName }) => {
   await openFeed(page);
   await page.locator("#q").fill("Claude");
@@ -344,7 +353,11 @@ test("starts and stops sync through the background worker", async ({ page }) => 
   // From a fresh worker (no captured template) START_SYNC surfaces an error.
   await page.evaluate(() => { window.__workerResponse = { ok: false, error: "No captured request yet." }; });
   await page.locator("#open-likes").click();
-  await expect(page.locator("#toast-txt")).toHaveText("No captured request yet.");
+  await expect(page.locator("#toast-txt")).toHaveText("Opened X Likes — let it load, then return and sync");
+  expect(await page.evaluate(() => window.__tabsCreated.at(-1))).toEqual({
+    url: "https://x.com/i/history/likes",
+    active: true,
+  });
 });
 
 test("browses, searches, navigates, and opens liked photos", async ({ page }) => {

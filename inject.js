@@ -1,7 +1,6 @@
 // Runs in the PAGE world (injected by content.js). Patches window.fetch and
 // XMLHttpRequest so we can capture the URL + headers X uses to load the
-// signed-in user's Likes timeline. Also exposes a fetch-on-demand bridge so
-// the content script can replay paginated requests with the same auth context.
+// signed-in user's Likes timeline. Sync replay itself runs in background.js.
 
 (() => {
   if (window.__xlsInjected) return;
@@ -89,50 +88,4 @@
   }
   PatchedXHR.prototype = OrigXHR.prototype;
   window.XMLHttpRequest = PatchedXHR;
-
-  // Bridge: content script asks us to fetch a URL with given headers from the
-  // page world (so cookies/auth context match what X expects).
-  window.addEventListener("message", async (ev) => {
-    if (ev.source !== window) return;
-    const d = ev.data;
-    if (!d || d.source !== "xls-cmd") return;
-    if (d.type === "FETCH_PAGE") {
-      try {
-        const res = await origFetch.call(window, d.url, {
-          method: d.method || "GET",
-          headers: d.headers || {},
-          credentials: "include",
-        });
-        const text = await res.text();
-        let body;
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = { _raw: text };
-        }
-        window.postMessage(
-          {
-            source: "xls",
-            type: "PAGE_RESULT",
-            id: d.id,
-            ok: res.ok,
-            status: res.status,
-            body,
-          },
-          "*"
-        );
-      } catch (e) {
-        window.postMessage(
-          {
-            source: "xls",
-            type: "PAGE_RESULT",
-            id: d.id,
-            ok: false,
-            error: String(e),
-          },
-          "*"
-        );
-      }
-    }
-  });
 })();

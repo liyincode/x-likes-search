@@ -31,11 +31,10 @@ If you cloned this repo instead, choose the repo folder directly when clicking *
 ### First-time setup
 
 1. Open your X Likes page:
-   `https://x.com/your-username/likes`
-2. Refresh the page once.
-   This lets the extension capture the request X uses to load your Likes timeline.
+   `https://x.com/i/history/likes`
+2. Let the page load once. This lets the extension capture the request X uses to load your Likes timeline; no controls are added to X.
 3. Click the **X Likes Search** extension icon in the Chrome toolbar.
-4. Click **sync** in the search page to start syncing your liked tweets.
+4. Click **sync** in the top-right corner of the search page.
 
 After syncing, you can search your liked tweets or switch to **Photos** to browse liked images.
 
@@ -67,7 +66,7 @@ The extension needs to capture the authenticated request your browser already se
 
 ### What if syncing fails?
 
-If you see an auth error, HTTP 403, or a similar failure, the captured request may have expired. Open your X Likes page, refresh it once, then return to the extension page and click **sync** again.
+If you see an auth error, HTTP 403, or a similar failure, the captured request may have expired. Open `History → Likes`, let it load once, then return to the extension page and click **sync** again. If no request has been captured, clicking **sync** opens the Likes page for you.
 
 ## Notes
 
