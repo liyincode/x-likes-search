@@ -17,11 +17,12 @@ The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is 
 
 ### Tests
 
+- `npm run typecheck` — strict TypeScript `checkJs` over `feed-core.js` and `types/feed-core.d.ts`; `noEmit` keeps the extension build-free.
 - `npm run test:unit` — `node:test` over `feed-core.js` logic (no browser, no install of browsers needed).
 - `npm run test:perf` — Node bench comparing legacy full HTML render vs cached filter vs virtual window (~1376 synthetic likes). `npm run test:perf:input` — Playwright input-to-paint latency (optional).
 - `npm run test:visual` — Playwright: mocks `chrome.*`, exercises interactions, and pixel-diffs the implementation against `design/x-likes-search/Likes Finder.html`. Requires `npm install` (+ Playwright's chromium).
-- `npm test` — both. Snapshots live in `tests/visual/feed.spec.js-snapshots/`; the `design/` folder is the visual reference and is required by the visual suite.
-- **Put testable logic in `feed-core.js`, not `feed.js`** — `feed-core.js` is DOM-free precisely so it can be unit-tested under Node. `feed.js` should stay a thin DOM/`chrome.*` binding layer.
+- `npm test` — typecheck, unit, and visual suites. Snapshots live in `tests/visual/feed.spec.js-snapshots/`; the `design/` folder is the visual reference and is required by the visual suite.
+- **Put testable logic in `feed-core.js`, not `feed.js`** — `feed-core.js` is DOM-free precisely so it can be unit-tested under Node. Keep its JSDoc annotations and `types/feed-core.d.ts` contracts synchronized; `feed.js` should stay a thin DOM/`chrome.*` binding layer.
 
 ## Architecture: three execution worlds
 

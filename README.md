@@ -81,13 +81,14 @@ This is a Manifest V3 Chrome extension with no build step. It can be loaded unpa
 
 ```bash
 npm install
+npm run typecheck
 npm run test:unit
 npm run test:visual
 npm run test:perf
 npm test
 ```
 
-The extension source is plain HTML, CSS, and JavaScript. `feed-core.js` contains the testable, DOM-free logic shared by the UI, service worker, and tests.
+The extension source is plain HTML, CSS, and JavaScript. TypeScript checks `feed-core.js` through JSDoc without emitting build artifacts; the extension still loads the source files directly.
 
 ## License
 

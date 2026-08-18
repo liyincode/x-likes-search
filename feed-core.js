@@ -1,7 +1,11 @@
+/**
+ * @param {XLS.FeedCoreRoot} root
+ * @param {() => XLS.FeedCoreApi} factory
+ */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.FeedCore = factory();
-})(typeof globalThis !== "undefined" ? globalThis : window, function () {
+})(/** @type {XLS.FeedCoreRoot} */ (typeof globalThis !== "undefined" ? globalThis : window), function () {
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // Virtual list row heights (px) — tuned to match .row / .row.active in feed.css.
@@ -9,6 +13,7 @@
   const ROW_ACTIVE_EXPANDED = 128;
   const INDEX_VERSION = 2;
 
+  /** @param {unknown} s */
   function escapeHTML(s) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -17,10 +22,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  /** @param {string} q */
   function words(q) {
     return String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   }
 
+  /** @param {unknown} seed */
   function hashHue(seed) {
     const s = String(seed || "x");
     let h = 0;
@@ -28,11 +35,16 @@
     return h;
   }
 
+  /**
+   * @param {XLS.LikeRecord} item
+   * @returns {XLS.LikeView}
+   */
   function normalizeLike(item) {
     const handle = item.author || "";
     const name = item.displayName || handle || "Unknown";
     const tweetId = item.tweetId || "";
     const url = item.url || (tweetId ? `https://x.com/${handle || "i"}/status/${tweetId}` : "");
+    /** @type {XLS.LikeView} */
     const out = {
       tweetId,
       text: item.text || "",
@@ -46,6 +58,7 @@
       url,
       capturedAt: item.capturedAt || 0,
       raw: item,
+      searchHay: "",
     };
     const likes = optionalNumber(item.likes);
     const reposts = optionalNumber(item.reposts);
@@ -77,16 +90,21 @@
     return out;
   }
 
+  /** @param {unknown} value */
   function optionalNumber(value) {
     if (value === null || value === undefined || value === "") return null;
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
   }
 
+  /**
+   * @param {unknown} url
+   * @param {string} size
+   */
   function mediaUrl(url, size) {
     if (String(url || "").startsWith("data:")) return String(url);
     try {
-      const out = new URL(url);
+      const out = new URL(String(url));
       out.searchParams.set("name", size);
       return out.toString();
     } catch {
@@ -94,17 +112,29 @@
     }
   }
 
+  /**
+   * @param {XLS.LikeView[]} tweets
+   * @returns {XLS.GalleryPhotoItem[]}
+   */
   function flattenPhotoItems(tweets) {
+    /** @type {XLS.GalleryPhotoItem[]} */
     const items = [];
     for (const likedTweet of tweets) {
       const tweet = likedTweet.mediaSource || likedTweet;
-      for (let mediaIndex = 0; mediaIndex < (likedTweet.media || []).length; mediaIndex += 1) {
-        items.push({ likedTweet, tweet, media: likedTweet.media[mediaIndex], mediaIndex });
+      const media = likedTweet.media || [];
+      for (let mediaIndex = 0; mediaIndex < media.length; mediaIndex += 1) {
+        items.push({ likedTweet, tweet, media: media[mediaIndex], mediaIndex });
       }
     }
     return items;
   }
 
+  /**
+   * @param {XLS.LikeIndex} index
+   * @param {XLS.LikeRecord[]} tweets
+   * @param {XLS.MergeOptions} [options]
+   * @returns {XLS.MergeResult}
+   */
   function mergeLikes(index, tweets, options = {}) {
     const updateMedia = Boolean(options.updateMedia);
     let added = 0;
@@ -133,8 +163,13 @@
     return { added, mediaUpdated };
   }
 
+  /** @param {unknown} error */
   function formatStorageError(error) {
-    const message = String(error?.message || error || "");
+    const message = String(
+      typeof error === "object" && error !== null && "message" in error
+        ? error.message
+        : error || ""
+    );
     if (message.startsWith("Local storage is full.")) return message;
     if (/quota|quota_bytes|exceed|storage.*full|disk.*full/i.test(message)) {
       return "Local storage is full. Sync stopped before reporting completion.";
@@ -145,16 +180,26 @@
     return "Could not save sync data. Sync stopped before reporting completion.";
   }
 
+  /**
+   * @param {XLS.StorageAreaLike} storageArea
+   * @param {Record<string, unknown>} items
+   */
   async function setStorageRequired(storageArea, items) {
     try {
       await storageArea.set(items);
     } catch (error) {
-      const storageError = new Error(formatStorageError(error), { cause: error });
+      const storageError = /** @type {Error & { code: string }} */ (
+        new Error(formatStorageError(error), { cause: error })
+      );
       storageError.code = "XLS_STORAGE_WRITE";
       throw storageError;
     }
   }
 
+  /**
+   * @param {XLS.LikeView} t
+   * @param {string} q
+   */
   function matches(t, q) {
     const terms = words(q);
     if (!terms.length) return true;
@@ -164,6 +209,10 @@
     return terms.every((term) => hay.includes(term));
   }
 
+  /**
+   * @param {XLS.LikeView[]} list
+   * @param {string} q
+   */
   function countMatches(list, q) {
     const terms = words(q);
     if (!terms.length) return list.length;
@@ -174,6 +223,13 @@
     return n;
   }
 
+  /**
+   * @param {number} count
+   * @param {number} activeIndex
+   * @param {number} [collapsed]
+   * @param {number} [expanded]
+   * @returns {XLS.RowLayout}
+   */
   function buildRowOffsets(count, activeIndex, collapsed = ROW_COLLAPSED, expanded = ROW_ACTIVE_EXPANDED) {
     const tops = new Array(count);
     const heights = new Array(count);
@@ -187,6 +243,13 @@
     return { tops, heights, totalHeight: y };
   }
 
+  /**
+   * @param {number} scrollTop
+   * @param {number} viewportHeight
+   * @param {XLS.RowLayout} layout
+   * @param {number} [overscan]
+   * @returns {XLS.VisibleRange}
+   */
   function visibleRange(scrollTop, viewportHeight, layout, overscan = 5) {
     const { tops, heights, totalHeight } = layout;
     const count = tops.length;
@@ -220,6 +283,10 @@
     return { start, end, totalHeight };
   }
 
+  /**
+   * @param {unknown} text
+   * @param {string} q
+   */
   function highlight(text, q) {
     const raw = String(text ?? "");
     const terms = words(q).sort((a, b) => b.length - a.length);
@@ -229,6 +296,10 @@
     return escapeHTML(raw).replace(re, "<mark>$1</mark>");
   }
 
+  /**
+   * @param {XLS.LikeView[]} list
+   * @param {XLS.SortMode} mode
+   */
   function sortList(list, mode) {
     const out = list.slice();
     if (mode === "oldest") {
@@ -244,16 +315,22 @@
     return out;
   }
 
+  /**
+   * @param {XLS.LikeView[]} all
+   * @param {XLS.SortMode} [sort]
+   */
   function pipeline(all, sort = "newest") {
     return sortList(all, sort);
   }
 
+  /** @param {unknown} name */
   function initials(name) {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
     const value = ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase();
     return value || "X";
   }
 
+  /** @param {number} hue */
   function avatarColors(hue) {
     return {
       bg: `oklch(0.62 0.14 ${hue})`,
@@ -261,10 +338,14 @@
     };
   }
 
+  /**
+   * @param {XLS.DateInput} iso
+   * @param {XLS.DateInput} [now]
+   */
   function absDate(iso, now = new Date()) {
-    const d = new Date(iso);
+    const d = iso instanceof Date ? new Date(iso.getTime()) : new Date(/** @type {string | number} */ (iso));
     if (Number.isNaN(d.getTime())) return "";
-    const nowD = now instanceof Date ? now : new Date(now);
+    const nowD = now instanceof Date ? now : new Date(/** @type {string | number} */ (now));
     const label = `${MON[d.getMonth()]} ${d.getDate()}`;
     if (!Number.isNaN(nowD.getTime()) && d.getFullYear() !== nowD.getFullYear()) {
       return `${label}, ${d.getFullYear()}`;
@@ -272,9 +353,17 @@
     return label;
   }
 
+  /**
+   * @param {XLS.DateInput} iso
+   * @param {XLS.DateInput} [now]
+   */
   function relativeDate(iso, now = new Date()) {
-    const then = new Date(iso).getTime();
-    const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+    const then = iso instanceof Date
+      ? iso.getTime()
+      : new Date(/** @type {string | number} */ (iso)).getTime();
+    const nowMs = now instanceof Date
+      ? now.getTime()
+      : new Date(/** @type {string | number} */ (now)).getTime();
     if (!then || Number.isNaN(then) || Number.isNaN(nowMs)) return "";
     const s = Math.max(0, Math.floor((nowMs - then) / 1000));
     if (s < 60) return "now";
@@ -287,12 +376,17 @@
     return absDate(iso, now);
   }
 
+  /** @param {XLS.DateInput} iso */
   function fullDate(iso) {
-    const d = new Date(iso);
+    const d = iso instanceof Date ? new Date(iso.getTime()) : new Date(/** @type {string | number} */ (iso));
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleString();
   }
 
+  /**
+   * @param {string[]} existing
+   * @param {string} q
+   */
   function addHistory(existing, q) {
     const value = String(q || "").trim();
     if (value.length < 2) return existing.slice();
@@ -301,6 +395,10 @@
     return next.slice(0, 6);
   }
 
+  /**
+   * @param {string[]} existing
+   * @param {string} q
+   */
   function removeHistory(existing, q) {
     return existing.filter((x) => x !== q);
   }
@@ -311,31 +409,35 @@
   // service-worker sync). Defensive optional-chaining handles X reshaping its
   // response (legacy vs core, note_tweet vs full_text). This is the most likely
   // thing to need an update when extraction breaks — update it here only.
+  /**
+   * @param {unknown} body
+   * @returns {XLS.ParsedLikes}
+   */
   function parseLikesResponse(body) {
     const tweets = [];
     let nextCursor = null;
     let mediaFallbackCount = 0;
 
+    const payload = /** @type {XLS.LikesResponse | null | undefined} */ (body);
     const timeline =
-      body?.data?.user?.result?.timeline_v2?.timeline ||
-      body?.data?.user?.result?.timeline?.timeline ||
+      payload?.data?.user?.result?.timeline_v2?.timeline ||
+      payload?.data?.user?.result?.timeline?.timeline ||
       null;
     const instructions = timeline?.instructions || [];
 
     for (const ins of instructions) {
       if (ins.type === "TimelineReplaceEntry" && ins.entry) {
-        const c = ins.entry.content || {};
-        if (c.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
+        const c = ins.entry.content;
+        if (c?.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
           nextCursor = c.value;
         }
       }
       const entries = ins.entries || [];
       for (const entry of entries) {
-        const c = entry.content || {};
-        if (c.entryType === "TimelineTimelineItem" && c.itemContent?.itemType === "TimelineTweet") {
-          let res = c.itemContent.tweet_results?.result;
+        const c = entry.content;
+        if (c?.entryType === "TimelineTimelineItem" && c.itemContent?.itemType === "TimelineTweet") {
+          const res = unwrapVisibilityResult(c.itemContent.tweet_results?.result);
           if (!res) continue;
-          if (res.__typename === "TweetWithVisibilityResults" && res.tweet) res = res.tweet;
           const tweetId = res.rest_id || res.legacy?.id_str;
           if (!tweetId) continue;
           const text =
@@ -356,6 +458,7 @@
           const reposts = res.legacy?.retweet_count;
           const mediaResult = extractPhotoMedia(res);
           if (mediaResult.fallback) mediaFallbackCount += 1;
+          /** @type {XLS.LikeRecord} */
           const tweet = {
             tweetId,
             text,
@@ -374,7 +477,7 @@
           }
           tweets.push(tweet);
         }
-        if (c.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
+        if (c?.entryType === "TimelineTimelineCursor" && c.cursorType === "Bottom" && c.value) {
           nextCursor = c.value;
         }
       }
@@ -383,11 +486,21 @@
     return { tweets, nextCursor, mediaFallbackCount };
   }
 
+  /**
+   * @param {XLS.XTweetResult | null | undefined} result
+   * @returns {XLS.XTweet | undefined}
+   */
   function unwrapVisibilityResult(result) {
-    if (result?.__typename === "TweetWithVisibilityResults" && result.tweet) return result.tweet;
-    return result;
+    if (result && "tweet" in result && result.__typename === "TweetWithVisibilityResults" && result.tweet) {
+      return result.tweet;
+    }
+    return /** @type {XLS.XTweet | undefined} */ (result);
   }
 
+  /**
+   * @param {XLS.XTweet} result
+   * @returns {XLS.MediaSourceRecord}
+   */
   function tweetIdentity(result) {
     const tweetId = result?.rest_id || result?.legacy?.id_str || "";
     const legacy = result?.legacy || {};
@@ -404,6 +517,10 @@
     };
   }
 
+  /**
+   * @param {XLS.XTweet} result
+   * @returns {{ media: XLS.PhotoMedia[], fallback: boolean, source: XLS.XTweet | null }}
+   */
   function extractPhotoMedia(result) {
     const outer = result?.legacy;
     let source = result;
@@ -423,8 +540,8 @@
         const width = Number(item.original_info?.width ?? item.sizes?.large?.w);
         const height = Number(item.original_info?.height ?? item.sizes?.large?.h);
         return {
-          type: "photo",
-          url: item.media_url_https,
+          type: /** @type {const} */ ("photo"),
+          url: String(item.media_url_https),
           width: Number.isFinite(width) ? width : 0,
           height: Number.isFinite(height) ? height : 0,
           altText: item.ext_alt_text || "",

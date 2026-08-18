@@ -79,13 +79,14 @@
 
 ```bash
 npm install
+npm run typecheck
 npm run test:unit
 npm run test:visual
 npm run test:perf
 npm test
 ```
 
-扩展源码是普通 HTML、CSS 和 JavaScript。`feed-core.js` 存放可测试的无 DOM 核心逻辑，供页面、service worker 和测试共用。
+扩展源码仍然是普通 HTML、CSS 和 JavaScript。TypeScript 通过 JSDoc 检查 `feed-core.js`，不会生成构建产物，扩展仍直接加载源码文件。
 
 ## License
 
