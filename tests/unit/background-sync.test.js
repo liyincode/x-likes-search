@@ -63,6 +63,14 @@ function pageBody(tweetId, nextCursor) {
   return body;
 }
 
+function emptyCursorBody(cursor) {
+  const body = responseBody();
+  body.data.user.result.timeline_v2.timeline.instructions[0].entries = [{
+    content: { entryType: "TimelineTimelineCursor", cursorType: "Bottom", value: cursor },
+  }];
+  return body;
+}
+
 function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   const store = structuredClone(initialStore);
   let messageListener;
@@ -390,6 +398,96 @@ test("ordinary sync continues through known pages to reconcile the true tail", a
   assert.equal(harness.fetchCalls.length, 4);
   assert.equal(status.state.complete, true);
   assert.equal(status.state.checked, 4);
+  assert.equal(status.state.removed, 1);
+  assert.equal(harness.store.x_likes_index.stale, undefined);
+});
+
+test("worker confirms a stable empty cursor fixed point before removing unliked records", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const pages = [pageBody("1", "CURSOR-A"), emptyCursorBody("CURSOR-A"), emptyCursorBody("CURSOR-A")];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "seen", capturedAt: 1 },
+      stale: { tweetId: "stale", text: "unliked", capturedAt: 2 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+  }, null, ({ call }) => pages[call - 1]);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 40; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(harness.fetchCalls.length, 3);
+  assert.equal(status.state.complete, true);
+  assert.equal(status.state.removed, 1);
+  assert.equal(harness.store.x_likes_index.stale, undefined);
+});
+
+test("worker preserves local likes when fixed-point confirmation returns new content", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const pages = [pageBody("1", "CURSOR-A"), emptyCursorBody("CURSOR-A"), pageBody("2", "CURSOR-A")];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "seen", capturedAt: 1 },
+      stale: { tweetId: "stale", text: "keep on anomaly", capturedAt: 2 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+  }, null, ({ call }) => pages[call - 1]);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 40; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(harness.fetchCalls.length, 3);
+  assert.equal(status.state.complete, false);
+  assert.equal(status.state.removed, 0);
+  assert.ok(harness.store.x_likes_index.stale);
+  assert.ok(harness.store.x_likes_index["2"]);
+  assert.doesNotMatch(status.state.error, /pagination cursor/);
+});
+
+test("worker continues when fixed-point confirmation advances the cursor", async () => {
+  const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
+  templateUrl.searchParams.set("variables", "{}");
+  const pages = [
+    pageBody("1", "CURSOR-A"),
+    emptyCursorBody("CURSOR-A"),
+    pageBody("2", "CURSOR-B"),
+    pageBody("3", null),
+  ];
+  const harness = createHarness({
+    x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
+    x_likes_index: {
+      "1": { tweetId: "1", text: "one", capturedAt: 1 },
+      "2": { tweetId: "2", text: "two", capturedAt: 2 },
+      "3": { tweetId: "3", text: "three", capturedAt: 3 },
+      stale: { tweetId: "stale", text: "unliked", capturedAt: 4 },
+    },
+    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+  }, null, ({ call }) => pages[call - 1]);
+
+  await harness.send({ source: "xls-feed", type: "START_SYNC" });
+  let status;
+  for (let i = 0; i < 50; i += 1) {
+    status = await harness.send({ source: "xls-feed", type: "SYNC_STATUS" });
+    if (status?.state?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(harness.fetchCalls.length, 4);
+  assert.equal(status.state.complete, true);
   assert.equal(status.state.removed, 1);
   assert.equal(harness.store.x_likes_index.stale, undefined);
 });

@@ -19,6 +19,7 @@ const SYNC_KEY = "x_likes_sync"; // transient progress, watched by the feed page
 const RETRY_BACKOFF = [2000, 5000, 10000, 20000];
 const FETCH_TIMEOUT_MS = 30000;
 const PAGE_DELAY = 700; // politeness between successful pages
+const TAIL_CONFIRM_DELAY_MS = 1000;
 
 // ---- Toolbar click → open/focus the feed ----
 chrome.action.onClicked.addListener(async () => {
@@ -274,6 +275,7 @@ async function syncLoop(template) {
   let cursor = null;
   let reachedTail = false;
   let repeatedCursor = false;
+  let confirmingEmptyFixedPoint = false;
   const seenTweetIds = new Set();
 
   const initialSyncState = {
@@ -398,10 +400,29 @@ async function syncLoop(template) {
       reachedTail = true;
       break;
     }
+    const emptyCursorFixedPoint =
+      nextCursor === cursor &&
+      rawTweetEntryCount === 0 &&
+      tweets.length === 0 &&
+      newSeenCount === 0;
+    if (emptyCursorFixedPoint) {
+      if (confirmingEmptyFixedPoint) {
+        reachedTail = true;
+        break;
+      }
+      confirmingEmptyFixedPoint = true;
+      await setSyncState({
+        running: true,
+        message: `Page ${pages} · confirming end of likes…`,
+      });
+      await interruptibleSleep(TAIL_CONFIRM_DELAY_MS);
+      continue;
+    }
     if (nextCursor === cursor) {
       repeatedCursor = true;
       break;
     }
+    confirmingEmptyFixedPoint = false;
     cursor = nextCursor;
 
     await interruptibleSleep(PAGE_DELAY);
@@ -439,7 +460,7 @@ async function syncLoop(template) {
     done: true,
     complete: completed,
     error: repeatedCursor
-      ? "X repeated a pagination cursor before the end. No local likes were removed."
+      ? "Sync stopped before reaching the end of your likes. Nothing was removed — try again in a moment."
       : null,
     page: pages,
     added,
@@ -454,7 +475,7 @@ async function syncLoop(template) {
       : completed
       ? `Done. +${added}, -${removed} (total ${total}).`
       : repeatedCursor
-      ? "X repeated a pagination cursor before the end. No local likes were removed."
+      ? "Sync stopped before reaching the end of your likes. Nothing was removed — try again in a moment."
       : `Paused. +${added} (total ${total}).`,
   });
 }
