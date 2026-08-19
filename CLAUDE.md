@@ -10,6 +10,18 @@ A Manifest V3 Chrome extension that indexes your X (Twitter) likes locally and l
 
 The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is no build step or bundler**, and nothing is compiled before loading. There IS now a `package.json`, but it only carries dev-only test tooling (Playwright, pixelmatch, pngjs) and `npm` scripts; the extension never imports node_modules and ships the source files as-is.
 
+### Approved ESM migration constraints
+
+The current classic-script architecture is being migrated to native ESM without adding a build step. During the migration:
+
+- Preserve all storage schemas, message strings, sync behavior, DOM structure, visual snapshots, and performance contracts.
+- Keep `content.js` and `inject.js` as classic scripts so capture still runs at `document_start` in the required execution worlds.
+- Use only static imports in the module service worker; extension service workers do not support dynamic `import()`.
+- Keep every intermediate implementation commit test-green. The package/Chrome/test ESM cutover must be one atomic format-only commit with no responsibility split mixed into it.
+- Assign mutable state to an owning module. Only genuinely cross-module application state may live in a shared state object; caches, DOM references, layout state, gallery state, and timers remain module-private.
+- Keep internal JSDoc types beside their implementations. Reserve `types/` for external X GraphQL contracts that have no local implementation.
+- Continue loading the repository root unpacked. Do not introduce `dist/`, a bundler, a watch process, or generated runtime artifacts.
+
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
 - **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
 - **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
