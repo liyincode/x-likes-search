@@ -33,27 +33,41 @@ const els = {
   lightboxCount: $("#lb-count"),
 };
 
-const state = { q: "", sort: "newest", mode: "posts", active: -1 };
-let allLikes = [];
-let view = [];
-let rawLikes = [];
-let indexState = {};
+const appState = {
+  q: "",
+  sort: "newest",
+  mode: "posts",
+  active: -1,
+  rawLikes: [],
+  allLikes: [],
+  view: [],
+  indexState: {},
+  syncState: {},
+};
+
+// Photos owns galleryItems, galleryRendered, lightboxIndex, and lightboxReturnFocus.
 let galleryItems = [];
 let galleryRendered = 0;
 let lightboxIndex = -1;
 let lightboxReturnFocus = null;
+
+// The feed shell owns transient toast, history, and render scheduling timers.
 let toastTimer = null;
 let historyTimer = null;
-let syncState = {};
+let renderTimer = null;
+let renderGen = 0;
+
+// Sync owns worker reconciliation and coalesced index refresh state.
 let syncReconcileTimer = null;
 let indexRefreshTimer = null;
 let pendingIndex = null;
 let hasPendingIndex = false;
 
+// The feed model owns its sorted pipeline cache.
 let cachedBase = null;
 let cachedPipelineKey = null;
-let renderTimer = null;
-let renderGen = 0;
+
+// Posts owns virtual-list DOM, layout, measurements, and animation scheduling.
 let paintRaf = 0;
 let rowLayout = { tops: [], heights: [], totalHeight: 0 };
 let virtualSpacer = null;
@@ -70,7 +84,7 @@ function appNow() {
 }
 
 function pipelineCacheKey() {
-  return state.sort;
+  return appState.sort;
 }
 
 function invalidatePipelineCache() {
@@ -82,7 +96,7 @@ function getCachedBase() {
   const key = pipelineCacheKey();
   if (cachedBase && cachedPipelineKey === key) return cachedBase;
   cachedPipelineKey = key;
-  cachedBase = Core.pipeline(allLikes, state.sort);
+  cachedBase = Core.pipeline(appState.allLikes, appState.sort);
   return cachedBase;
 }
 
@@ -145,20 +159,20 @@ function initTheme() {
 
 function updateStatus() {
   const localCount =
-    state.mode === "photos"
+    appState.mode === "photos"
       ? `${galleryItems.length} photos from ${new Set(galleryItems.map((item) => item.likedTweet.tweetId)).size} likes`
-      : `${allLikes.length} liked`;
-  if (syncState.running) {
-    els.status.textContent = `Syncing… ${syncState.message || "Preparing request…"}`;
-  } else if (syncState.error) {
-    els.status.textContent = syncState.error;
-  } else if (syncState.done && syncState.message) {
-    els.status.textContent = `${localCount} · ${syncState.message}`;
+      : `${appState.allLikes.length} liked`;
+  if (appState.syncState.running) {
+    els.status.textContent = `Syncing… ${appState.syncState.message || "Preparing request…"}`;
+  } else if (appState.syncState.error) {
+    els.status.textContent = appState.syncState.error;
+  } else if (appState.syncState.done && appState.syncState.message) {
+    els.status.textContent = `${localCount} · ${appState.syncState.message}`;
   } else {
     els.status.textContent = `${localCount} · local only`;
   }
   const sbStatus = els.status.closest(".sb-status");
-  if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(syncState.running));
+  if (sbStatus) sbStatus.classList.toggle("is-syncing", Boolean(appState.syncState.running));
   updateSyncButtons();
   scheduleSyncReconcile();
 }
@@ -166,7 +180,7 @@ function updateStatus() {
 function updateSyncButtons() {
   const btn = $("#open-likes");
   const exportBtn = $("#export");
-  const empty = allLikes.length === 0;
+  const empty = appState.allLikes.length === 0;
   const setHidden = (sel, hidden) => {
     const el = $(sel);
     if (el) el.style.display = hidden ? "none" : "";
@@ -175,7 +189,7 @@ function updateSyncButtons() {
   setHidden(".filters", empty);
 
   if (btn) {
-    if (syncState.running) {
+    if (appState.syncState.running) {
       btn.textContent = "stop";
       btn.disabled = false;
       btn.title = "Stop sync";
@@ -186,20 +200,20 @@ function updateSyncButtons() {
     }
   }
   if (exportBtn) {
-    exportBtn.disabled = Boolean(syncState.running);
-    exportBtn.title = syncState.running ? "Wait until sync finishes" : "Export indexed likes as JSON";
+    exportBtn.disabled = Boolean(appState.syncState.running);
+    exportBtn.title = appState.syncState.running ? "Wait until sync finishes" : "Export indexed likes as JSON";
   }
 }
 
 function updateCount(baseLen) {
-  if (state.q) {
-    if (state.mode === "photos") {
-      els.count.innerHTML = `<b>${galleryItems.length}</b> photos in ${view.length} likes`;
+  if (appState.q) {
+    if (appState.mode === "photos") {
+      els.count.innerHTML = `<b>${galleryItems.length}</b> photos in ${appState.view.length} likes`;
       els.count.style.display = "";
       return;
     }
-    const idx = state.active >= 0 ? state.active + 1 : 0;
-    els.count.innerHTML = `<b>${idx}</b> / ${view.length} in ${allLikes.length}`;
+    const idx = appState.active >= 0 ? appState.active + 1 : 0;
+    els.count.innerHTML = `<b>${idx}</b> / ${appState.view.length} in ${appState.allLikes.length}`;
     els.count.style.display = "";
   } else {
     els.count.textContent = "";
@@ -208,13 +222,13 @@ function updateCount(baseLen) {
 }
 
 function updateMatchCountPreview() {
-  if (!state.q) {
+  if (!appState.q) {
     els.count.textContent = "";
     els.count.style.display = "none";
     return;
   }
-  const n = Core.countMatches(getCachedBase(), state.q);
-  els.count.innerHTML = `<b>…</b> / ${n} in ${allLikes.length}`;
+  const n = Core.countMatches(getCachedBase(), appState.q);
+  els.count.innerHTML = `<b>…</b> / ${n} in ${appState.allLikes.length}`;
   els.count.style.display = "";
 }
 
@@ -231,16 +245,16 @@ function rowHTML(t, i) {
   const stats = t.stats
     ? `<span class="stats">${Number.isFinite(t.stats.likes) ? `<span>♡ ${t.stats.likes}</span>` : ""}${Number.isFinite(t.stats.reposts) ? `<span>⇄ ${t.stats.reposts}</span>` : ""}</span>`
     : "";
-  const active = i === state.active ? " active" : "";
+  const active = i === appState.active ? " active" : "";
   return `
     <div class="row${active}" data-i="${i}" data-id="${Core.escapeHTML(t.tweetId)}">
       ${avatarHTML(t)}
       <div class="meta">
         <div class="line1">
-          <span class="nm">${Core.highlight(t.author.name, state.q)}</span>
-          <span class="hd">@${Core.highlight(t.author.handle, state.q)}</span>
+          <span class="nm">${Core.highlight(t.author.name, appState.q)}</span>
+          <span class="hd">@${Core.highlight(t.author.handle, appState.q)}</span>
         </div>
-        <div class="snip">${Core.highlight(t.text, state.q) || '<span style="opacity:.55">(no text — link only)</span>'}</div>
+        <div class="snip">${Core.highlight(t.text, appState.q) || '<span style="opacity:.55">(no text — link only)</span>'}</div>
         <div class="expand">
           <div class="row-actions">
             ${stats}
@@ -343,14 +357,14 @@ function wireResultsEvents() {
     if (openBtn) {
       e.stopPropagation();
       const row = openBtn.closest(".row");
-      if (row) openTweet(view[Number(row.dataset.i)]);
+      if (row) openTweet(appState.view[Number(row.dataset.i)]);
       return;
     }
     const copyBtn = e.target.closest(".copy-btn");
     if (copyBtn) {
       e.stopPropagation();
       const row = copyBtn.closest(".row");
-      if (row) copyLink(view[Number(row.dataset.i)], copyBtn);
+      if (row) copyLink(appState.view[Number(row.dataset.i)], copyBtn);
       return;
     }
     const row = e.target.closest(".row");
@@ -360,11 +374,11 @@ function wireResultsEvents() {
 
   els.results.addEventListener("dblclick", (e) => {
     const row = e.target.closest(".row");
-    if (row) openTweet(view[Number(row.dataset.i)]);
+    if (row) openTweet(appState.view[Number(row.dataset.i)]);
   });
 
   els.feedScroll.addEventListener("scroll", () => {
-    if (state.mode === "photos") {
+    if (appState.mode === "photos") {
       const remaining = els.feedScroll.scrollHeight - els.feedScroll.scrollTop - els.feedScroll.clientHeight;
       if (remaining < 500) appendGalleryBatch();
       return;
@@ -374,14 +388,14 @@ function wireResultsEvents() {
   });
 
   window.addEventListener("resize", () => {
-    if (state.mode !== "posts") return;
+    if (appState.mode !== "posts") return;
     cancelAnimationFrame(paintRaf);
     paintRaf = requestAnimationFrame(() => paintVisible(false));
   });
 }
 
 function syncActiveRowHeightIdentity() {
-  const id = state.active >= 0 ? view[state.active]?.tweetId || String(state.active) : null;
+  const id = appState.active >= 0 ? appState.view[appState.active]?.tweetId || String(appState.active) : null;
   if (id !== activeRowHeightId) {
     activeRowHeightId = id;
     activeRowHeight = Core.ROW_ACTIVE_EXPANDED;
@@ -399,7 +413,7 @@ function measureActiveRowHeight() {
 
 function rebuildRowLayout() {
   syncActiveRowHeightIdentity();
-  rowLayout = Core.buildRowOffsets(view.length, state.active, Core.ROW_COLLAPSED, activeRowHeight);
+  rowLayout = Core.buildRowOffsets(appState.view.length, appState.active, Core.ROW_COLLAPSED, activeRowHeight);
   if (virtualSpacer) virtualSpacer.style.height = `${rowLayout.totalHeight}px`;
 }
 
@@ -416,7 +430,7 @@ function listViewport() {
 }
 
 function paintVisible(resetScroll) {
-  if (state.mode !== "posts" || !view.length || !virtualWindow) return;
+  if (appState.mode !== "posts" || !appState.view.length || !virtualWindow) return;
 
   rebuildRowLayout();
   if (resetScroll) els.feedScroll.scrollTop = els.results.offsetTop;
@@ -431,16 +445,16 @@ function paintVisible(resetScroll) {
   }
 
   const parts = [];
-  for (let i = start; i <= end; i += 1) parts.push(rowHTML(view[i], i));
+  for (let i = start; i <= end; i += 1) parts.push(rowHTML(appState.view[i], i));
   virtualWindow.style.transform = `translateY(${rowLayout.tops[start]}px)`;
   virtualWindow.innerHTML = parts.join("");
   if (measureActiveRowHeight()) rebuildRowLayout();
 }
 
 function scrollToActive() {
-  if (state.active < 0 || !view.length) return;
-  const rowTop = rowLayout.tops[state.active];
-  const rowH = rowLayout.heights[state.active];
+  if (appState.active < 0 || !appState.view.length) return;
+  const rowTop = rowLayout.tops[appState.active];
+  const rowH = rowLayout.heights[appState.active];
   const resultsTop = els.results.offsetTop;
   const { scrollTop: listTop, vh } = listViewport();
   const margin = 80;
@@ -452,16 +466,16 @@ function scrollToActive() {
 }
 
 function setActive(i, scroll) {
-  if (state.mode !== "posts") return;
-  state.active = i;
-  if (!view.length) return;
+  if (appState.mode !== "posts") return;
+  appState.active = i;
+  if (!appState.view.length) return;
   paintVisible(false);
   updateCount(getCachedBase().length);
   if (scroll) scrollToActive();
 }
 
 function toggleActive(i) {
-  setActive(state.active === i ? -1 : i, false);
+  setActive(appState.active === i ? -1 : i, false);
 }
 
 function showToast(msg) {
@@ -473,7 +487,7 @@ function showToast(msg) {
 
 function openTweet(t) {
   if (!t?.url) return;
-  pushHistory(state.q);
+  pushHistory(appState.q);
   chrome.tabs.create({ url: t.url, active: true });
 }
 
@@ -493,7 +507,7 @@ function sendToWorker(msg) {
 async function toggleSync() {
   const btn = $("#open-likes");
   if (btn && btn.disabled) return;
-  if (syncState.running) {
+  if (appState.syncState.running) {
     await sendToWorker({ type: "STOP_SYNC" });
     showToast("Stopping sync…");
     return;
@@ -519,13 +533,13 @@ async function refreshSyncState() {
   const res = await sendToWorker({ type: "SYNC_STATUS" });
   if (!res?.ok) return;
   const stored = (res && res.state) || {};
-  syncState = { ...stored };
-  syncState.running = Boolean(res && res.running);
+  appState.syncState = { ...stored };
+  appState.syncState.running = Boolean(res && res.running);
   updateStatus();
 }
 
 function scheduleSyncReconcile() {
-  if (!syncState.running) {
+  if (!appState.syncState.running) {
     clearTimeout(syncReconcileTimer);
     syncReconcileTimer = null;
     return;
@@ -554,24 +568,24 @@ function copyLink(t, btn) {
 
 function rebuildView() {
   const base = getCachedBase();
-  if (!state.q) view = base;
-  else view = base.filter((t) => Core.matches(t, state.q));
+  if (!appState.q) appState.view = base;
+  else appState.view = base.filter((t) => Core.matches(t, appState.q));
 
-  if (state.q && state.active < 0 && view.length) state.active = 0;
-  if (state.active >= view.length) state.active = view.length ? 0 : -1;
+  if (appState.q && appState.active < 0 && appState.view.length) appState.active = 0;
+  if (appState.active >= appState.view.length) appState.active = appState.view.length ? 0 : -1;
 }
 
 function renderEmptyState() {
   els.results.style.display = "none";
   els.gallery.hidden = true;
 
-  if (state.mode === "photos") {
+  if (appState.mode === "photos") {
     els.gallery.innerHTML = "";
     galleryRendered = 0;
-    if (Number(indexState.indexVersion || 0) < Core.INDEX_VERSION) {
+    if (Number(appState.indexState.indexVersion || 0) < Core.INDEX_VERSION) {
       els.empty.innerHTML = `<div class="empty"><div class="big">Photos need indexing</div><p>Run sync once to add photos to your existing likes.</p></div>`;
-    } else if (state.q) {
-      els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+    } else if (appState.q) {
+      els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${Core.escapeHTML(appState.q)}"</span></p></div>`;
     } else {
       els.empty.innerHTML = `<div class="empty"><div class="big">No liked photos</div><p>Your indexed likes do not contain photos yet.</p></div>`;
     }
@@ -581,8 +595,8 @@ function renderEmptyState() {
   els.results.innerHTML = "";
   virtualSpacer = null;
   virtualWindow = null;
-  if (allLikes.length) {
-    els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(state.q)}"</span></p></div>`;
+  if (appState.allLikes.length) {
+    els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(appState.q)}"</span></p></div>`;
   } else {
     els.empty.innerHTML = `
         <div class="empty">
@@ -597,7 +611,7 @@ function renderEmptyState() {
 
 function renderPosts(resetScroll) {
   els.gallery.hidden = true;
-  if (!view.length) {
+  if (!appState.view.length) {
     renderEmptyState();
     return;
   }
@@ -624,12 +638,12 @@ function renderGallery(resetScroll) {
 
 function renderCurrentMode(resetScroll = true) {
   rebuildView();
-  galleryItems = state.mode === "photos" ? Core.flattenPhotoItems(view) : [];
+  galleryItems = appState.mode === "photos" ? Core.flattenPhotoItems(appState.view) : [];
   if (lightboxIndex >= galleryItems.length) closeLightbox();
-  document.body.dataset.mode = state.mode;
+  document.body.dataset.mode = appState.mode;
   updateStatus();
   updateCount(getCachedBase().length);
-  if (state.mode === "photos") renderGallery(resetScroll);
+  if (appState.mode === "photos") renderGallery(resetScroll);
   else renderPosts(resetScroll);
 }
 
@@ -643,16 +657,16 @@ function scheduleRender(resetScroll = true) {
 }
 
 function move(delta) {
-  if (state.mode !== "posts" || !view.length) return;
-  let i = state.active < 0 ? 0 : state.active + delta;
-  if (i < 0) i = view.length - 1;
-  if (i >= view.length) i = 0;
+  if (appState.mode !== "posts" || !appState.view.length) return;
+  let i = appState.active < 0 ? 0 : appState.active + delta;
+  if (i < 0) i = appState.view.length - 1;
+  if (i >= appState.view.length) i = 0;
   setActive(i, true);
 }
 
 function applyIndex(index, resetScroll = true) {
-  rawLikes = Object.values(index);
-  allLikes = rawLikes.map(Core.normalizeLike);
+  appState.rawLikes = Object.values(index);
+  appState.allLikes = appState.rawLikes.map(Core.normalizeLike);
   invalidatePipelineCache();
   renderCurrentMode(resetScroll);
 }
@@ -670,7 +684,7 @@ function flushPendingIndex() {
 function queueIndexRefresh(index) {
   pendingIndex = index || {};
   hasPendingIndex = true;
-  if (!syncState.running) {
+  if (!appState.syncState.running) {
     flushPendingIndex();
     return;
   }
@@ -685,12 +699,12 @@ async function load() {
 
 async function loadIndexState() {
   const data = await chrome.storage.local.get(STATE_KEY);
-  indexState = data[STATE_KEY] || {};
-  if (state.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
+  appState.indexState = data[STATE_KEY] || {};
+  if (appState.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
 }
 
 function exportLikes() {
-  const blob = new Blob([JSON.stringify(rawLikes, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(appState.rawLikes, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -706,14 +720,14 @@ function wireEvents() {
   });
 
   els.q.addEventListener("input", () => {
-    state.q = els.q.value.trim();
-    state.active = -1;
+    appState.q = els.q.value.trim();
+    appState.active = -1;
     updateMatchCountPreview();
     scheduleRender(true);
     maybeShowHistory();
     clearTimeout(historyTimer);
     historyTimer = setTimeout(() => {
-      if (state.q.length >= 2 && view.length) pushHistory(state.q);
+      if (appState.q.length >= 2 && appState.view.length) pushHistory(appState.q);
     }, 1100);
   });
   els.q.addEventListener("focus", maybeShowHistory);
@@ -737,8 +751,8 @@ function wireEvents() {
     if (item) {
       e.preventDefault();
       els.q.value = item.getAttribute("data-q");
-      state.q = els.q.value;
-      state.active = -1;
+      appState.q = els.q.value;
+      appState.active = -1;
       els.history.classList.remove("show");
       updateMatchCountPreview();
       renderCurrentMode(true);
@@ -771,23 +785,23 @@ function wireEvents() {
       if (!els.q.value) return;
       e.preventDefault();
       els.q.value = "";
-      state.q = "";
-      state.active = -1;
+      appState.q = "";
+      appState.active = -1;
       updateMatchCountPreview();
       renderCurrentMode(true);
       return;
     }
     if (e.key === "ArrowDown") {
-      if (state.mode !== "posts") return;
+      if (appState.mode !== "posts") return;
       e.preventDefault();
       move(1);
     } else if (e.key === "ArrowUp") {
-      if (state.mode !== "posts") return;
+      if (appState.mode !== "posts") return;
       e.preventDefault();
       move(-1);
     } else if (e.key === "Enter") {
-      if (state.mode !== "posts") return;
-      if ((e.metaKey || e.ctrlKey) && state.active >= 0) openTweet(view[state.active]);
+      if (appState.mode !== "posts") return;
+      if ((e.metaKey || e.ctrlKey) && appState.active >= 0) openTweet(appState.view[appState.active]);
       else {
         e.preventDefault();
         move(1);
@@ -798,7 +812,7 @@ function wireEvents() {
   els.sort.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
-    state.sort = btn.dataset.sort;
+    appState.sort = btn.dataset.sort;
     [...els.sort.children].forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
     invalidatePipelineCache();
     renderCurrentMode(true);
@@ -806,9 +820,9 @@ function wireEvents() {
 
   els.viewMode.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-mode]");
-    if (!btn || btn.dataset.mode === state.mode) return;
-    state.mode = btn.dataset.mode;
-    state.active = -1;
+    if (!btn || btn.dataset.mode === appState.mode) return;
+    appState.mode = btn.dataset.mode;
+    appState.active = -1;
     [...els.viewMode.children].forEach((item) =>
       item.setAttribute("aria-pressed", String(item === btn))
     );
@@ -849,17 +863,17 @@ function wireEvents() {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes[SYNC_KEY]) {
-      const prevRunning = syncState.running;
-      syncState = changes[SYNC_KEY].newValue || {};
+      const prevRunning = appState.syncState.running;
+      appState.syncState = changes[SYNC_KEY].newValue || {};
       updateStatus();
-      if (!syncState.running) flushPendingIndex();
-      if (syncState.done && syncState.error) showToast(syncState.error);
-      else if (syncState.done && prevRunning) showToast(syncState.message || "Sync finished");
+      if (!appState.syncState.running) flushPendingIndex();
+      if (appState.syncState.done && appState.syncState.error) showToast(appState.syncState.error);
+      else if (appState.syncState.done && prevRunning) showToast(appState.syncState.message || "Sync finished");
     }
     if (changes[STORAGE_KEY]) queueIndexRefresh(changes[STORAGE_KEY].newValue);
     if (changes[STATE_KEY]) {
-      indexState = changes[STATE_KEY].newValue || {};
-      if (state.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
+      appState.indexState = changes[STATE_KEY].newValue || {};
+      if (appState.mode === "photos" && !galleryItems.length) renderCurrentMode(false);
     }
   });
 
@@ -876,12 +890,12 @@ loadIndexState();
 refreshSyncState();
 
 window.__feedApp = {
-  state,
+  state: appState,
   get allLikes() {
-    return allLikes;
+    return appState.allLikes;
   },
   get view() {
-    return view;
+    return appState.view;
   },
   load,
   render: renderCurrentMode,
