@@ -1,20 +1,47 @@
-# X Likes Search
+<p align="center">
+  <img src="assets/icons/icon-128.png" width="88" alt="X Likes Search 图标">
+</p>
 
-[English](README.md)
+<h1 align="center">X Likes Search</h1>
 
-一个 Chrome 扩展，用来搜索你在 X / Twitter 上点过赞的内容，也可以用本地画廊浏览其中的图片。
+<p align="center">
+  在本地搜索和浏览你在 X / Twitter 点过赞的内容。<br>
+  私密、快速，不依赖服务器。
+</p>
 
-如果你经常用点赞当收藏，后来想找回某条以前点过赞的推文，只能一直往下翻，会非常麻烦。这个工具可以把你的点赞内容同步到本地，然后直接用关键词搜索。
+<p align="center">
+  <a href="https://github.com/liyincode/x-likes-search/releases/latest"><img src="https://img.shields.io/github/v/release/liyincode/x-likes-search?display_name=tag&style=flat-square" alt="最新版本"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/liyincode/x-likes-search?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Chrome-Manifest_V3-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chrome Manifest V3">
+</p>
 
-数据只保存在你的浏览器本地，不需要服务器，也不会上传你的内容。
+<p align="center">
+  <a href="https://github.com/liyincode/x-likes-search/releases/latest"><strong>下载最新版本</strong></a>
+  ·
+  <a href="README.md">English</a>
+</p>
+
+![X Likes Search 的 Posts 和 Photos 视图](assets/readme-screenshot.png)
+
+如果你经常把点赞当作收藏，后来想找回某条内容时，通常只能不断向下翻。X Likes Search 会在本地建立一份私密索引，让你几秒钟内找到它，并在同一个画廊里浏览所有点赞图片。
+
+## 功能
+
+- **快速本地搜索**：搜索推文内容、作者昵称和用户名。
+- **图片画廊**：响应式浏览、大图预览、键盘切换，并可返回 X 查看原推文。
+- **安全同步**：添加最新点赞；只有在确认到达时间线末尾后，才会移除已经取消点赞的记录。
+- **本地优先**：没有服务器、遥测或数据上传。
+- **JSON 导出**：备份保存在本地的点赞索引。
+
+### 图片画廊实览
+
+![X Likes Search 本地点赞图片画廊](assets/gallery-screenshot.webp)
 
 ## 安装
 
-1. 打开最新 Release 页面，下载 zip 包：
-   <https://github.com/liyincode/x-likes-search/releases/latest>
+1. 打开[最新 Release](https://github.com/liyincode/x-likes-search/releases/latest) 并下载 zip 文件。
 2. 解压下载好的 zip 文件。
-3. 打开 Chrome，进入扩展管理页面：
-   `chrome://extensions/`
+3. 在 Chrome 中打开 `chrome://extensions/`。
 4. 打开右上角的 **开发者模式**。
 5. 点击 **加载已解压的扩展程序**。
 6. 选择刚刚解压出来的 `x-likes-search` 文件夹。
@@ -28,8 +55,7 @@
 
 ### 第一次使用
 
-1. 打开你的 X 点赞页面：
-   `https://x.com/i/history/likes`
+1. 打开你的 X 点赞页面：`https://x.com/i/history/likes`。
 2. 等待页面完成一次加载。这一步会让扩展捕获 X 加载点赞列表时的请求信息。
 3. 点击浏览器工具栏里的 **X Likes Search** 扩展图标，打开搜索页面。
 4. 点击搜索页面右上角的 **sync**，开始同步点赞内容。
@@ -42,7 +68,7 @@
 - 可以搜索推文内容、作者昵称、用户名。
 - 支持按最新、最旧、作者排序。
 - 双击推文卡片可以打开原推文。
-- 后续再次点击 **sync** 会增量同步，不会重复保存已有内容。
+- 后续再次点击 **sync** 会重新核对当前 Likes：添加最新点赞，并在安全到达末页后移除已经取消点赞的记录。
 
 ### 浏览点赞图片
 
@@ -51,6 +77,28 @@
 - 点击图片可以打开大图预览，并通过方向键或界面按钮在完整结果集中切换。
 - 图片会保留原推文上下文，点击 **open on X** 可以回到对应推文。
 - 如果从 `0.5.0` 之前的版本升级，需要执行一次完整同步，为已经保存在本地的点赞补齐图片元数据。
+
+## 工作原理
+
+1. 访问 X Likes 页面时，扩展会捕获浏览器本来就会发出的已认证 Likes 请求。
+2. 扩展的 Service Worker 直接向 X 重放该请求，并根据时间线游标继续分页。
+3. 解析出的推文和图片元数据保存在 Chrome 的本地扩展存储中，搜索页面直接从本地读取。
+
+捕获的请求模板和点赞索引始终保留在扩展内部。只有在你主动开始同步时，扩展才会向 X 发送请求。
+
+## 隐私与权限
+
+| 权限 | 用途 |
+| --- | --- |
+| `storage` | 在 Chrome 本地保存请求模板、点赞索引和同步状态。 |
+| `unlimitedStorage` | 防止较大的本地索引触及 Chrome 默认的扩展存储容量限制。 |
+| `tabs` | 打开或切换到扩展搜索页、原推文和 X Likes 设置页。 |
+| 访问 `x.com` 和 `twitter.com` | 捕获 Likes 请求，并直接向 X 发送同步请求。 |
+
+- 项目没有后端服务器，也没有遥测。
+- 扩展不会读取或保存你的密码。
+- 点赞索引不会上传到任何地方。
+- 已认证请求模板只保存在 Chrome 扩展存储中，并且只用于和 X 通信。
 
 ## 常见问题
 
@@ -87,6 +135,8 @@ npm test
 ```
 
 扩展源码仍然是普通 HTML、CSS 和原生 ES Module。TypeScript 通过 JSDoc 检查全部运行时 JavaScript 模块，不生成构建产物；Chrome 仍直接加载源码，不需要 bundler 或生成 `dist/` 目录。
+
+如果需要报告安全问题，请遵循 [SECURITY.md](SECURITY.md) 中的私下披露流程。
 
 ## License
 

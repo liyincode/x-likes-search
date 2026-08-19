@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a focused improvement to X Likes Search.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult or impossible today?
+      placeholder: I want to ... because ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest change that would solve the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Explain any current workaround or alternative approach.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: I understand the extension is local-only and has no backend server.
+          required: true
+        - label: I understand features depending on undocumented X APIs may break when X changes them.
+          required: true

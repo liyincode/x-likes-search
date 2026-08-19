@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible problem with sync, search, photos, or extension behavior.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-reproduction
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove personal data from screenshots and logs. Never paste cookies, authorization headers, CSRF tokens, or the stored request template.
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      description: Find this in chrome://extensions or on the downloaded release.
+      placeholder: v0.5.0
+    validations:
+      required: true
+  - type: input
+    id: chrome-version
+    attributes:
+      label: Chrome version and operating system
+      placeholder: Chrome 140 on macOS 15
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Sync
+        - Search and posts
+        - Photo gallery and lightbox
+        - Installation or extension startup
+        - Export
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the shortest sequence that consistently reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Add screenshots or console errors only after removing usernames, liked content, URLs with query parameters, request headers, and tokens.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I reproduced this with the latest release.
+          required: true
+        - label: I removed credentials and personal data from everything attached above.
+          required: true
+        - label: This is not a security vulnerability requiring private disclosure.
+          required: true
