@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Core = require("../../feed-core.js");
 
-const source = fs.readFileSync(path.resolve(__dirname, "../../background.js"), "utf8");
+const source = fs.readFileSync(path.resolve(__dirname, "../../background/sync.js"), "utf8");
+const runtimeSource = fs.readFileSync(path.resolve(__dirname, "../../background/runtime.js"), "utf8");
 
 function responseBody() {
   return {
@@ -73,70 +74,93 @@ function emptyCursorBody(cursor) {
 
 function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   const store = structuredClone(initialStore);
-  let messageListener;
   const writes = [];
   const fetchCalls = [];
   const debugLogs = [];
-  const chrome = {
-    runtime: {
-      getURL: (file) => `chrome-extension://test/${file}`,
-      onMessage: { addListener(fn) { messageListener = fn; } },
+  const storage = {
+    async get(keys) {
+      const out = {};
+      for (const key of Array.isArray(keys) ? keys : [keys]) out[key] = structuredClone(store[key]);
+      return out;
     },
-    action: { onClicked: { addListener() {} } },
-    tabs: { async query() { return []; }, async update() {}, async create() {} },
-    windows: { async update() {} },
-    storage: {
-      local: {
-        async get(keys) {
-          const out = {};
-          for (const key of Array.isArray(keys) ? keys : [keys]) out[key] = structuredClone(store[key]);
-          return out;
-        },
-        async set(items) {
-          writes.push(structuredClone(items));
-          if (setImpl) await setImpl(items);
-          Object.assign(store, structuredClone(items));
-        },
-      },
+    async set(items) {
+      writes.push(structuredClone(items));
+      if (setImpl) await setImpl(items);
+      Object.assign(store, structuredClone(items));
     },
   };
+  const fetchImpl = async (url, init) => {
+    fetchCalls.push({ url, init });
+    const body = typeof fetchBody === "function"
+      ? await fetchBody({ url, init, call: fetchCalls.length })
+      : fetchBody;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get() { return null; } },
+      async text() { return JSON.stringify(body); },
+    };
+  };
+  const logger = {
+    debug(...args) { debugLogs.push(args); },
+    error: console.error.bind(console),
+    warn: console.warn.bind(console),
+  };
   const context = {
-    chrome,
-    FeedCore: Core,
-    importScripts() {},
-    fetch: async (url, init) => {
-      fetchCalls.push({ url, init });
-      const body = typeof fetchBody === "function"
-        ? await fetchBody({ url, init, call: fetchCalls.length })
-        : fetchBody;
-      return {
-        ok: true,
-        status: 200,
-        headers: { get() { return null; } },
-        async text() { return JSON.stringify(body); },
-      };
-    },
     URL,
     AbortController,
-    console: {
-      debug(...args) { debugLogs.push(args); },
-      error: console.error.bind(console),
-      warn: console.warn.bind(console),
-    },
+    console: logger,
     setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
     clearTimeout,
   };
-  vm.runInNewContext(source, context, { filename: "background.js" });
+  vm.runInNewContext(source, context, { filename: "background/sync.js" });
+  const engine = context.XLSSync.createSyncEngine({
+    storage,
+    fetchImpl,
+    core: Core,
+    logger,
+    setTimeoutImpl: context.setTimeout,
+    clearTimeoutImpl: clearTimeout,
+  });
 
-  function send(message) {
-    return new Promise((resolve) => {
-      const async = messageListener(message, {}, resolve);
-      if (!async) queueMicrotask(() => resolve(undefined));
-    });
+  async function send(message) {
+    if (message.source !== "xls-feed") return undefined;
+    if (message.type === "START_SYNC") return engine.startSync();
+    if (message.type === "STOP_SYNC") {
+      engine.stopSync();
+      return { ok: true };
+    }
+    if (message.type === "SYNC_STATUS") return engine.getStatus();
+    return undefined;
   }
 
   return { store, writes, fetchCalls, debugLogs, send };
 }
+
+test("runtime adapter maps feed messages to the sync engine", async () => {
+  let listener;
+  const calls = [];
+  const runtime = { onMessage: { addListener(fn) { listener = fn; } } };
+  const engine = {
+    async startSync() { calls.push("start"); return { ok: true, started: true }; },
+    stopSync() { calls.push("stop"); },
+    async getStatus() { calls.push("status"); return { ok: true, running: false }; },
+  };
+  const context = {};
+  vm.runInNewContext(runtimeSource, context, { filename: "background/runtime.js" });
+  context.XLSRuntime.registerRuntimeMessages(runtime, engine);
+
+  const send = (message) => new Promise((resolve) => {
+    const isAsync = listener(message, {}, resolve);
+    if (!isAsync) queueMicrotask(() => resolve(undefined));
+  });
+
+  assert.deepEqual(await send({ source: "xls-feed", type: "START_SYNC" }), { ok: true, started: true });
+  assert.deepEqual(await send({ source: "xls-feed", type: "SYNC_STATUS" }), { ok: true, running: false });
+  assert.equal(await send({ source: "other", type: "START_SYNC" }), undefined);
+  listener({ source: "xls-feed", type: "STOP_SYNC" }, {}, (response) => calls.push(response.ok));
+  assert.deepEqual(calls, ["start", "status", "stop", true]);
+});
 
 test("worker sync stops and reports an index quota failure", async () => {
   const templateUrl = new URL("https://x.com/i/api/graphql/hash/Likes");
