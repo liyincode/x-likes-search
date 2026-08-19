@@ -36,7 +36,9 @@ jobs:
             feed.html \
             feed.css \
             feed.js \
-            feed-core.js \
+            background \
+            core \
+            feed \
             assets/fonts \
             assets/icons \
             -x '*/.DS_Store'

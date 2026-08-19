@@ -6,6 +6,7 @@
 
 ## Completed
 
+- 2026-08-19: Updated the tag-triggered release archive for the native ESM layout by replacing the deleted `feed-core.js` entry with the required `background/`, `core/`, and `feed/` source directories.
 - 2026-08-19: Migrated the service worker, extension page, shared logic, tests, fixtures, and Playwright configs to native ESM without adding a build step; preserved classic `content.js` / `inject.js` boundaries and static-only service-worker imports.
 - 2026-08-19: Split shared logic into responsibility-owned `core/` modules and the feed into state, posts, photos, and sync controllers. Removed the UMD `feed-core.js` and its duplicated 208-line declaration file after direct consumers and tests moved to the new modules.
 - 2026-08-19: Replaced `file://` visual fixtures with an automatically managed Node static server and expanded strict JSDoc `checkJs` coverage to every runtime module with `@types/chrome`, while keeping zero emitted artifacts.
@@ -36,6 +37,7 @@
 
 ## Recent Verification
 
+- 2026-08-19: Reproduced the release workflow's zip command locally; the 388 KB archive passed integrity checks and contained all runtime modules, manifest-referenced icons, and CSS-referenced fonts with no stale `feed-core.js` entry.
 - 2026-08-19: `npm test` — strict JSDoc checking across all runtime modules, 34 unit tests, and 14 HTTP-served Playwright tests passed after the ESM/module split; visual snapshots remained unchanged.
 - 2026-08-19: `npm run test:perf` and `npm run test:perf:input` passed after the final type pass; virtual rendering was 32.3× faster than the full-render baseline and input-to-painted-rows median was 230.0 ms in this run.
 - 2026-08-18: `npm test` — TypeScript strict checking, 33 unit tests, and 14 Playwright tests passed after adding the twice-confirmed empty repeated-cursor tail; coverage verifies stable-tail deletion, content-bearing confirmation preservation, and continued pagination when confirmation advances.
