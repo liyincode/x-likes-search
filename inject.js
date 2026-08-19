@@ -8,6 +8,7 @@
 
   const LIKES_URL_RE = /\/graphql\/[^/]+\/Likes(\?|$)/;
 
+  /** @param {{ url: string, headers: Record<string, string>, method: string }} template */
   function postCaptured(template) {
     window.postMessage(
       // Manual protocol copy shared with the classic content.js bridge.
@@ -16,16 +17,14 @@
     );
   }
 
-  function headersToObj(h) {
+  /** @param {HeadersInit | undefined} headers */
+  function headersToObj(headers) {
+    /** @type {Record<string, string>} */
     const out = {};
-    if (!h) return out;
-    if (h instanceof Headers) {
-      h.forEach((v, k) => (out[k] = v));
-    } else if (Array.isArray(h)) {
-      for (const [k, v] of h) out[k] = v;
-    } else if (typeof h === "object") {
-      Object.assign(out, h);
-    }
+    if (!headers) return out;
+    new Headers(headers).forEach((value, key) => {
+      out[key] = value;
+    });
     return out;
   }
 
@@ -33,47 +32,63 @@
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
     try {
-      const url =
-        typeof input === "string"
-          ? input
-          : input && input.url
-          ? input.url
-          : "";
+      const url = input instanceof Request ? input.url : String(input);
       if (LIKES_URL_RE.test(url)) {
-        let headers = headersToObj(init && init.headers);
-        if (input && input.headers && Object.keys(headers).length === 0) {
+        let headers = headersToObj(init?.headers);
+        if (input instanceof Request && Object.keys(headers).length === 0) {
           headers = headersToObj(input.headers);
         }
         postCaptured({
           url,
           headers,
-          method: (init && init.method) || (input && input.method) || "GET",
+          method: init?.method || (input instanceof Request ? input.method : "GET"),
         });
       }
     } catch (_) {}
-    return origFetch.apply(this, arguments);
+    return origFetch(input, init);
   };
 
   // Patch XHR (X currently uses fetch, but be safe).
   const OrigXHR = window.XMLHttpRequest;
-  function PatchedXHR() {
-    const xhr = new OrigXHR();
+  class PatchedXHR extends OrigXHR {
+    constructor() {
+      super();
+      const xhr = this;
+    /** @type {Record<string, string>} */
     const headers = {};
+    /** @type {XMLHttpRequest["open"]} */
     const origOpen = xhr.open;
+    /** @type {XMLHttpRequest["setRequestHeader"]} */
     const origSetHeader = xhr.setRequestHeader;
+    /** @type {XMLHttpRequest["send"]} */
     const origSend = xhr.send;
     let capturedUrl = "";
     let capturedMethod = "GET";
-    xhr.open = function (method, url) {
+    /**
+     * @param {string} method
+     * @param {string | URL} url
+     * @param {boolean} [async]
+     * @param {string | null} [username]
+     * @param {string | null} [password]
+     */
+    xhr.open = function (method, url, async = true, username = null, password = null) {
       capturedMethod = method;
-      capturedUrl = url;
-      return origOpen.apply(this, arguments);
+      capturedUrl = String(url);
+      const asyncFlag = typeof async === "boolean" ? async : true;
+      const user = typeof username === "string" ? username : null;
+      const pass = typeof password === "string" ? password : null;
+      return origOpen.call(this, method, url, asyncFlag, user, pass);
     };
-    xhr.setRequestHeader = function (k, v) {
-      headers[k] = v;
-      return origSetHeader.apply(this, arguments);
+    /**
+     * @param {string} key
+     * @param {string} value
+     */
+    xhr.setRequestHeader = function (key, value) {
+      headers[key] = value;
+      return origSetHeader.call(this, key, value);
     };
-    xhr.send = function () {
+    /** @param {Document | XMLHttpRequestBodyInit | null} [body] */
+    xhr.send = function (body = null) {
       try {
         if (LIKES_URL_RE.test(capturedUrl)) {
           postCaptured({
@@ -83,10 +98,10 @@
           });
         }
       } catch (_) {}
-      return origSend.apply(this, arguments);
+      return origSend.call(this, body);
     };
-    return xhr;
+      return xhr;
+    }
   }
-  PatchedXHR.prototype = OrigXHR.prototype;
   window.XMLHttpRequest = PatchedXHR;
 })();

@@ -2,14 +2,24 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noEmit": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2022"
+    "target": "ES2022",
+    "types": ["chrome"]
   },
-  "include": ["core/**/*.js", "types/**/*.d.ts"],
+  "include": [
+    "background.js",
+    "background/**/*.js",
+    "content.js",
+    "core/**/*.js",
+    "feed.js",
+    "feed/**/*.js",
+    "inject.js",
+    "types/**/*.d.ts"
+  ],
   "exclude": ["node_modules", "design", "tests"]
 }

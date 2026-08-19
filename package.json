@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@types/chrome": "^0.2.6",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
     "typescript": "^6.0.3"

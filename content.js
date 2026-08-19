@@ -13,6 +13,7 @@
     }
   }
 
+  /** @param {{ url: string, headers?: Record<string, string>, method?: string }} template */
   async function saveTemplate(template) {
     if (!extensionAlive()) return;
     try {

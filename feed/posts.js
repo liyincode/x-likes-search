@@ -7,15 +7,42 @@ import {
   visibleRange,
 } from "../core/virtual-list.js";
 
-export function createPostsController({ state, els, appNow, getBaseLength, updateCount, openTweet, copyLink }) {
+/** @typedef {import("../core/likes.js").LikeView} LikeView */
+/** @typedef {typeof import("./state.js").appState} AppState */
+/**
+ * @typedef {{
+ *   feedScroll: HTMLElement,
+ *   results: HTMLElement,
+ *   gallery: HTMLElement,
+ *   empty: HTMLElement,
+ * }} PostsElements
+ */
+/**
+ * @typedef {{
+ *   state: AppState,
+ *   els: PostsElements,
+ *   appNow(): Date,
+ *   updateCount(): void,
+ *   openTweet(tweet: LikeView): void,
+ *   copyLink(tweet: LikeView, button: HTMLElement): void,
+ * }} PostsOptions
+ */
+
+/** @param {PostsOptions} options */
+export function createPostsController({ state, els, appNow, updateCount, openTweet, copyLink }) {
   let paintRaf = 0;
+  /** @type {import("../core/virtual-list.js").RowLayout} */
   let rowLayout = { tops: [], heights: [], totalHeight: 0 };
+  /** @type {HTMLElement | null} */
   let virtualSpacer = null;
+  /** @type {HTMLElement | null} */
   let virtualWindow = null;
   let resultsWired = false;
   let activeRowHeight = ROW_ACTIVE_EXPANDED;
+  /** @type {string | null} */
   let activeRowHeightId = null;
 
+  /** @param {LikeView} tweet */
   function avatarHTML(tweet) {
     const colors = avatarColors(tweet.author.hue);
     const fallback = `<span class="av-fallback">${initials(tweet.author.name)}</span>`;
@@ -25,6 +52,10 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     return `<div class="av" style="background:linear-gradient(135deg, ${colors.bg}, ${colors.bg2})">${image}${fallback}</div>`;
   }
 
+  /**
+   * @param {LikeView} tweet
+   * @param {number} index
+   */
   function rowHTML(tweet, index) {
     const stats = tweet.stats
       ? `<span class="stats">${Number.isFinite(tweet.stats.likes) ? `<span>♡ ${tweet.stats.likes}</span>` : ""}${Number.isFinite(tweet.stats.reposts) ? `<span>⇄ ${tweet.stats.reposts}</span>` : ""}</span>`
@@ -56,8 +87,8 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     if (virtualSpacer && virtualWindow && els.results.contains(virtualSpacer)) return;
     els.results.innerHTML =
       '<div class="virtual-spacer" aria-hidden="true"></div><div class="virtual-window"></div>';
-    virtualSpacer = els.results.querySelector(".virtual-spacer");
-    virtualWindow = els.results.querySelector(".virtual-window");
+    virtualSpacer = /** @type {HTMLElement} */ (els.results.querySelector(".virtual-spacer"));
+    virtualWindow = /** @type {HTMLElement} */ (els.results.querySelector(".virtual-window"));
     wireResultsEvents();
   }
 
@@ -65,29 +96,33 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     if (resultsWired) return;
     resultsWired = true;
     els.results.addEventListener("error", (event) => {
-      if (event.target.tagName === "IMG") event.target.remove();
+      if (event.target instanceof Element && event.target.tagName === "IMG") event.target.remove();
     }, true);
     els.results.addEventListener("click", (event) => {
-      const openButton = event.target.closest(".open-btn");
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const openButton = target.closest(".open-btn");
       if (openButton) {
         event.stopPropagation();
         const row = openButton.closest(".row");
-        if (row) openTweet(state.view[Number(row.dataset.i)]);
+        if (row) openTweet(state.view[Number(/** @type {HTMLElement} */ (row).dataset.i)]);
         return;
       }
-      const copyButton = event.target.closest(".copy-btn");
+      const copyButton = target.closest(".copy-btn");
       if (copyButton) {
         event.stopPropagation();
         const row = copyButton.closest(".row");
-        if (row) copyLink(state.view[Number(row.dataset.i)], copyButton);
+        if (row && copyButton instanceof HTMLElement) {
+          copyLink(state.view[Number(/** @type {HTMLElement} */ (row).dataset.i)], copyButton);
+        }
         return;
       }
-      const row = event.target.closest(".row");
-      if (row) toggleActive(Number(row.dataset.i));
+      const row = target.closest(".row");
+      if (row) toggleActive(Number(/** @type {HTMLElement} */ (row).dataset.i));
     });
     els.results.addEventListener("dblclick", (event) => {
-      const row = event.target.closest(".row");
-      if (row) openTweet(state.view[Number(row.dataset.i)]);
+      const row = event.target instanceof Element ? event.target.closest(".row") : null;
+      if (row) openTweet(state.view[Number(/** @type {HTMLElement} */ (row).dataset.i)]);
     });
   }
 
@@ -124,6 +159,7 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     return { scrollTop, vh: Math.max(120, bottom - top) };
   }
 
+  /** @param {boolean} resetScroll */
   function paint(resetScroll) {
     if (state.mode !== "posts" || !state.view.length || !virtualWindow) return;
     rebuildRowLayout();
@@ -156,19 +192,25 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     }
   }
 
+  /**
+   * @param {number} index
+   * @param {boolean} scroll
+   */
   function setActive(index, scroll) {
     if (state.mode !== "posts") return;
     state.active = index;
     if (!state.view.length) return;
     paint(false);
-    updateCount(getBaseLength());
+    updateCount();
     if (scroll) scrollToActive();
   }
 
+  /** @param {number} index */
   function toggleActive(index) {
     setActive(state.active === index ? -1 : index, false);
   }
 
+  /** @param {number} delta */
   function move(delta) {
     if (state.mode !== "posts" || !state.view.length) return;
     let index = state.active < 0 ? 0 : state.active + delta;
@@ -177,6 +219,7 @@ export function createPostsController({ state, els, appNow, getBaseLength, updat
     setActive(index, true);
   }
 
+  /** @param {boolean} resetScroll */
   function render(resetScroll) {
     els.gallery.hidden = true;
     if (!state.view.length) return false;

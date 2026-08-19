@@ -11,6 +11,27 @@ import { parseLikesResponse } from "../core/x-likes-parser.js";
 
 // DOM-free sync engine shared by the module service worker and Node tests.
 
+/** @typedef {import("../core/likes.js").LikeIndex} LikeIndex */
+/** @typedef {{ url: string, headers?: Record<string, string>, method?: string }} RequestTemplate */
+/** @typedef {{ completed?: boolean, indexVersion?: number, [key: string]: unknown }} IndexState */
+/** @typedef {{ running?: boolean, done?: boolean, complete?: boolean, error?: string | null, message?: string, [key: string]: unknown }} SyncState */
+/** @typedef {{ get(keys: string | string[]): Promise<Record<string, unknown>>, set(items: Record<string, unknown>): Promise<void> }} SyncStorage */
+/**
+ * @typedef {{
+ *   storage: SyncStorage,
+ *   fetchImpl: typeof fetch,
+ *   now?: () => number,
+ *   logger?: Pick<Console, "debug" | "error" | "warn">,
+ *   setTimeoutImpl?: (handler: () => void, timeout: number) => number,
+ *   clearTimeoutImpl?: (id: number) => void,
+ *   retryBackoff?: number[],
+ *   fetchTimeoutMs?: number,
+ *   pageDelayMs?: number,
+ *   tailConfirmDelayMs?: number,
+ * }} SyncDependencies
+ */
+
+/** @param {SyncDependencies} dependencies */
 export function createSyncEngine(dependencies) {
   const storage = dependencies.storage;
   const fetchImpl = dependencies.fetchImpl;
@@ -25,12 +46,16 @@ export function createSyncEngine(dependencies) {
 
 let syncing = false;
 let stopRequested = false;
+/** @type {SyncState | null} */
 let liveSyncState = null;
+/** @type {AbortController | null} */
 let activeFetchController = null;
 
-const sleep = (ms) => new Promise((r) => setTimeoutImpl(r, ms));
+/** @param {number} ms */
+const sleep = (ms) => new Promise((resolve) => setTimeoutImpl(() => resolve(undefined), ms));
 
 // A sleep that bails out early when the user asks to stop.
+/** @param {number} ms */
 async function interruptibleSleep(ms) {
   const step = 500;
   let waited = 0;
@@ -40,30 +65,35 @@ async function interruptibleSleep(ms) {
   }
 }
 
+/** @param {string | string[]} keys */
 async function getLocal(keys) {
   return storage.get(keys);
 }
 
+/** @param {Record<string, unknown>} items */
 async function setLocalRequired(items) {
   return setStorageRequired(storage, items);
 }
 
+/** @param {SyncState} patch */
 function updateLiveSyncState(patch) {
   liveSyncState = { ...(liveSyncState || {}), ...patch };
   return liveSyncState;
 }
 
+/** @param {SyncState} patch */
 async function setSyncState(patch) {
-  const cur = liveSyncState || (await getLocal(SYNC_KEY))[SYNC_KEY] || {};
+  const cur = liveSyncState || /** @type {SyncState} */ ((await getLocal(SYNC_KEY))[SYNC_KEY] || {});
   const next = { ...cur, ...patch };
   liveSyncState = next;
   await setLocalRequired({ [SYNC_KEY]: next });
   return next;
 }
 
+/** @param {unknown} error */
 async function reportSyncFailure(error) {
   syncing = false;
-  const message = String(error?.message || error || "Sync failed.");
+  const message = String(error instanceof Error ? error.message : error || "Sync failed.");
   const next = updateLiveSyncState({
     running: false,
     done: true,
@@ -85,7 +115,7 @@ async function reportSyncFailure(error) {
 
 async function currentSyncStatus() {
   if (liveSyncState) return { ok: true, running: syncing, state: liveSyncState };
-  const stored = (await getLocal(SYNC_KEY))[SYNC_KEY] || null;
+  const stored = /** @type {SyncState | null} */ ((await getLocal(SYNC_KEY))[SYNC_KEY] || null);
   if (stored?.running) {
     const message = "Sync was interrupted. Start it again to continue.";
     const interrupted = {
@@ -111,6 +141,7 @@ async function currentSyncStatus() {
 // fetch() forbids a handful of header names; the browser sets the real values.
 // Cookies arrive via credentials:"include" (host permission), so drop `cookie`
 // and friends to avoid sending a stale captured value.
+/** @param {Record<string, string>} headers */
 function sanitizeHeaders(headers) {
   const skip = new Set([
     "host",
@@ -122,6 +153,7 @@ function sanitizeHeaders(headers) {
     "origin",
     "referer",
   ]);
+  /** @type {Record<string, string>} */
   const out = {};
   for (const k of Object.keys(headers || {})) {
     if (skip.has(k.toLowerCase())) continue;
@@ -134,12 +166,20 @@ function sanitizeHeaders(headers) {
 // backoff so a single blip doesn't abort a long crawl. Permanent failures
 // (401/403/404 — usually a stale template) throw immediately. Returns the parsed
 // body, or throws after exhausting retries / on a permanent error / on stop.
+/**
+ * @param {string} requestUrl
+ * @param {string} method
+ * @param {Record<string, string>} headers
+ * @param {number} pageNum
+ * @returns {Promise<Record<string, unknown>>}
+ */
 async function fetchPage(requestUrl, method, headers, pageNum) {
   for (let attempt = 0; ; attempt += 1) {
     if (stopRequested) throw new Error("stopped");
 
+    /** @type {Response} */
     let res;
-    let text;
+    let text = "";
     const controller = new AbortController();
     activeFetchController = controller;
     const timeoutId = setTimeoutImpl(() => controller.abort(), fetchTimeoutMs);
@@ -151,9 +191,10 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
         signal: controller.signal,
       });
       text = await res.text();
-    } catch (e) {
+    } catch (caught) {
       if (stopRequested) throw new Error("stopped");
-      const failure = e?.name === "AbortError" ? "request timed out" : `network error: ${e.message}`;
+      const error = caught instanceof Error ? caught : new Error(String(caught));
+      const failure = error.name === "AbortError" ? "request timed out" : `network error: ${error.message}`;
       if (attempt >= retryBackoff.length) throw new Error(failure);
       await setSyncState({
         running: true,
@@ -166,9 +207,10 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
       if (activeFetchController === controller) activeFetchController = null;
     }
 
+    /** @type {Record<string, unknown>} */
     let body;
     try {
-      body = JSON.parse(text);
+      body = /** @type {Record<string, unknown>} */ (JSON.parse(text));
     } catch {
       body = { _raw: text };
     }
@@ -198,7 +240,7 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
 
 async function startSync() {
   if (syncing) return { ok: true, alreadyRunning: true };
-  const template = (await getLocal(TEMPLATE_KEY))[TEMPLATE_KEY];
+  const template = /** @type {RequestTemplate | undefined} */ ((await getLocal(TEMPLATE_KEY))[TEMPLATE_KEY]);
   if (!template || !template.url) {
     return {
       ok: false,
@@ -216,10 +258,11 @@ async function startSync() {
 }
 
 async function markIncomplete() {
-  const prev = (await getLocal(STATE_KEY))[STATE_KEY] || {};
+  const prev = /** @type {IndexState} */ ((await getLocal(STATE_KEY))[STATE_KEY] || {});
   await setLocalRequired({ [STATE_KEY]: { ...prev, completed: false } });
 }
 
+/** @param {RequestTemplate} template */
 async function syncLoop(template) {
   let url;
   try {
@@ -238,9 +281,10 @@ async function syncLoop(template) {
   const headers = sanitizeHeaders(template.headers || {});
   const method = template.method || "GET";
 
+  /** @type {Record<string, unknown>} */
   let variables;
   try {
-    variables = JSON.parse(url.searchParams.get("variables") || "{}");
+    variables = /** @type {Record<string, unknown>} */ (JSON.parse(url.searchParams.get("variables") || "{}"));
   } catch {
     variables = {};
   }
@@ -248,8 +292,8 @@ async function syncLoop(template) {
   const baseVariables = { ...variables };
   delete baseVariables.cursor;
 
-  const index = (await getLocal(STORAGE_KEY))[STORAGE_KEY] || {};
-  const prevState = (await getLocal(STATE_KEY))[STATE_KEY] || {};
+  const index = /** @type {LikeIndex} */ ((await getLocal(STORAGE_KEY))[STORAGE_KEY] || {});
+  const prevState = /** @type {IndexState} */ ((await getLocal(STATE_KEY))[STATE_KEY] || {});
 
   const needsMediaBackfill = Number(prevState.indexVersion || 0) < INDEX_VERSION;
 
@@ -288,19 +332,21 @@ async function syncLoop(template) {
     if (cursor) vars.cursor = cursor;
     url.searchParams.set("variables", JSON.stringify(vars));
 
+    /** @type {Record<string, unknown>} */
     let body;
     try {
       body = await fetchPage(url.toString(), method, headers, pages);
-    } catch (e) {
-      if (String(e.message) === "stopped") break;
-      if (e?.code === "XLS_STORAGE_WRITE") throw e;
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
+      if (error.message === "stopped") break;
+      if ("code" in error && error.code === "XLS_STORAGE_WRITE") throw error;
       syncing = false;
       await markIncomplete();
       await setSyncState({
         running: false,
         done: true,
         complete: false,
-        error: `Fetch error: ${e.message}.`,
+        error: `Fetch error: ${error.message}.`,
         page: pages,
         added,
         total,
@@ -308,7 +354,7 @@ async function syncLoop(template) {
       return;
     }
 
-    if (body && body.errors && !body.data) {
+    if (body.errors && !body.data) {
       syncing = false;
       await markIncomplete();
       await setSyncState({
@@ -477,12 +523,13 @@ async function syncLoop(template) {
   async function getStatus() {
     try {
       return await currentSyncStatus();
-    } catch (error) {
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
       return {
         ok: false,
         running: syncing,
         state: liveSyncState,
-        error: String(error?.message || error),
+        error: error.message,
       };
     }
   }

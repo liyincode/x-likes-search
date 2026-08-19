@@ -3,12 +3,44 @@ import { flattenPhotoItems, mediaUrl } from "../core/likes.js";
 
 const GALLERY_BATCH_SIZE = 60;
 
+/** @typedef {import("../core/likes.js").GalleryPhotoItem} GalleryPhotoItem */
+/** @typedef {import("../core/likes.js").LikeView | import("../core/likes.js").MediaSourceView} OpenableTweet */
+/** @typedef {typeof import("./state.js").appState} AppState */
+/**
+ * @typedef {{
+ *   feedScroll: HTMLElement,
+ *   results: HTMLElement,
+ *   gallery: HTMLElement,
+ *   empty: HTMLElement,
+ *   lightbox: HTMLElement,
+ *   lightboxImage: HTMLImageElement,
+ *   lightboxAuthor: HTMLElement,
+ *   lightboxHandle: HTMLElement,
+ *   lightboxCount: HTMLElement,
+ * }} PhotosElements
+ */
+/**
+ * @typedef {{
+ *   state: AppState,
+ *   els: PhotosElements,
+ *   appNow(): Date,
+ *   openTweet(tweet: OpenableTweet): void,
+ * }} PhotosOptions
+ */
+
+/** @param {PhotosOptions} options */
 export function createPhotosController({ state, els, appNow, openTweet }) {
+  /** @type {GalleryPhotoItem[]} */
   let galleryItems = [];
   let galleryRendered = 0;
   let lightboxIndex = -1;
+  /** @type {Element | null} */
   let lightboxReturnFocus = null;
 
+  /**
+   * @param {GalleryPhotoItem} item
+   * @param {number} index
+   */
   function galleryCardHTML(item, index) {
     const alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
     return `<button class="gallery-card" data-gallery-i="${index}" aria-label="${escapeHTML(alt)}">
@@ -36,7 +68,7 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
       close();
       return;
     }
-    els.lightbox.querySelector(".lb-stage").classList.remove("is-error");
+    els.lightbox.querySelector(".lb-stage")?.classList.remove("is-error");
     els.lightboxImage.alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
     els.lightboxImage.src = mediaUrl(item.media.url, "large");
     els.lightboxAuthor.textContent = item.tweet.author.name;
@@ -44,6 +76,7 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
     els.lightboxCount.textContent = `${lightboxIndex + 1} / ${galleryItems.length}`;
   }
 
+  /** @param {number} index */
   function open(index) {
     if (!galleryItems[index]) return;
     lightboxReturnFocus = document.activeElement;
@@ -51,13 +84,17 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
     els.lightbox.hidden = false;
     els.lightbox.setAttribute("aria-hidden", "false");
     renderLightbox();
-    els.lightbox.querySelector(".lb-close").focus();
+    const closeButton = els.lightbox.querySelector(".lb-close");
+    if (closeButton instanceof HTMLElement) closeButton.focus();
   }
 
   function close() {
     if (els.lightbox.contains(document.activeElement)) {
-      if (lightboxReturnFocus?.isConnected) lightboxReturnFocus.focus();
-      else document.activeElement.blur();
+      if (lightboxReturnFocus instanceof HTMLElement && lightboxReturnFocus.isConnected) {
+        lightboxReturnFocus.focus();
+      } else if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
     lightboxIndex = -1;
     els.lightbox.hidden = true;
@@ -66,6 +103,7 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
     lightboxReturnFocus = null;
   }
 
+  /** @param {number} delta */
   function move(delta) {
     if (lightboxIndex < 0 || !galleryItems.length) return;
     lightboxIndex = (lightboxIndex + delta + galleryItems.length) % galleryItems.length;
@@ -77,6 +115,7 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
     if (lightboxIndex >= galleryItems.length) close();
   }
 
+  /** @param {boolean} resetScroll */
   function render(resetScroll) {
     els.results.style.display = "none";
     if (!galleryItems.length) return false;
@@ -101,26 +140,31 @@ export function createPhotosController({ state, els, appNow, openTweet }) {
 
   function wireEvents() {
     els.gallery.addEventListener("error", (event) => {
-      if (event.target.tagName === "IMG") {
-        event.target.closest(".gallery-card")?.classList.add("is-error");
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.tagName === "IMG") {
+        target.closest(".gallery-card")?.classList.add("is-error");
       }
     }, true);
     els.gallery.addEventListener("click", (event) => {
-      const card = event.target.closest("[data-gallery-i]");
-      if (card) open(Number(card.dataset.galleryI));
+      const card = event.target instanceof Element
+        ? event.target.closest("[data-gallery-i]")
+        : null;
+      if (card) open(Number(/** @type {HTMLElement} */ (card).dataset.galleryI));
     });
     els.lightbox.addEventListener("click", (event) => {
-      if (event.target.closest("[data-lightbox-close]")) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (target.closest("[data-lightbox-close]")) {
         close();
         return;
       }
-      const control = event.target.closest("[data-lightbox-move]");
-      if (control) move(Number(control.dataset.lightboxMove));
+      const control = target.closest("[data-lightbox-move]");
+      if (control) move(Number(/** @type {HTMLElement} */ (control).dataset.lightboxMove));
     });
     els.lightboxImage.addEventListener("error", () => {
-      els.lightbox.querySelector(".lb-stage").classList.add("is-error");
+      els.lightbox.querySelector(".lb-stage")?.classList.add("is-error");
     });
-    document.querySelector("#lb-open").addEventListener("click", () => {
+    /** @type {HTMLElement} */ (document.querySelector("#lb-open")).addEventListener("click", () => {
       const item = galleryItems[lightboxIndex];
       if (item) openTweet(item.tweet);
     });

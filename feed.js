@@ -16,10 +16,11 @@ const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
 const RENDER_DEBOUNCE_MS = 200;
 
-const $ = (selector) => document.querySelector(selector);
+/** @param {string} selector */
+const $ = (selector) => /** @type {HTMLElement} */ (document.querySelector(selector));
 
 const els = {
-  q: $("#q"),
+  q: /** @type {HTMLInputElement} */ ($("#q")),
   feedScroll: $("#feed-scroll"),
   results: $("#results"),
   gallery: $("#gallery"),
@@ -33,7 +34,7 @@ const els = {
   toast: $("#toast"),
   toastText: $("#toast-txt"),
   lightbox: $("#lightbox"),
-  lightboxImage: $("#lb-image"),
+  lightboxImage: /** @type {HTMLImageElement} */ ($("#lb-image")),
   lightboxError: $("#lb-error"),
   lightboxAuthor: $("#lb-author"),
   lightboxHandle: $("#lb-handle"),
@@ -43,18 +44,19 @@ const els = {
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
 const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a6.5 6.5 0 0 0 10 10z"/></svg>';
 
+/** @type {ReturnType<typeof setTimeout> | null} */
 let toastTimer = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
 let historyTimer = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
 let renderTimer = null;
 let renderGeneration = 0;
-let posts;
-let photos;
-let sync;
 
 function appNow() {
   return window.__XLS_NOW ? new Date(window.__XLS_NOW) : new Date();
 }
 
+/** @returns {string[]} */
 function getHistory() {
   try {
     return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
@@ -63,10 +65,12 @@ function getHistory() {
   }
 }
 
+/** @param {string[]} items */
 function setHistory(items) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
 }
 
+/** @param {string} query */
 function pushHistory(query) {
   setHistory(addHistory(getHistory(), query));
 }
@@ -94,6 +98,7 @@ function maybeShowHistory() {
   }
 }
 
+/** @param {"light" | "dark"} theme */
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   els.theme.innerHTML = theme === "dark" ? MOON : SUN;
@@ -112,6 +117,10 @@ function updateSyncButtons() {
   const syncButton = $("#open-likes");
   const exportButton = $("#export");
   const empty = appState.allLikes.length === 0;
+  /**
+   * @param {string} selector
+   * @param {boolean} hidden
+   */
   const setHidden = (selector, hidden) => {
     const element = $(selector);
     if (element) element.style.display = hidden ? "none" : "";
@@ -120,11 +129,11 @@ function updateSyncButtons() {
   setHidden(".filters", empty);
   if (syncButton) {
     syncButton.textContent = appState.syncState.running ? "stop" : "sync";
-    syncButton.disabled = false;
+    /** @type {HTMLButtonElement} */ (syncButton).disabled = false;
     syncButton.title = appState.syncState.running ? "Stop sync" : "Sync likes";
   }
   if (exportButton) {
-    exportButton.disabled = Boolean(appState.syncState.running);
+    /** @type {HTMLButtonElement} */ (exportButton).disabled = Boolean(appState.syncState.running);
     exportButton.title = appState.syncState.running
       ? "Wait until sync finishes"
       : "Export indexed likes as JSON";
@@ -175,19 +184,25 @@ function updateMatchCountPreview() {
   els.count.style.display = "";
 }
 
+/** @param {string} message */
 function showToast(message) {
   els.toastText.textContent = message;
   els.toast.classList.add("show");
-  clearTimeout(toastTimer);
+  if (toastTimer !== null) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => els.toast.classList.remove("show"), 1600);
 }
 
+/** @param {import("./core/likes.js").LikeView | import("./core/likes.js").MediaSourceView} tweet */
 function openTweet(tweet) {
   if (!tweet?.url) return;
   pushHistory(appState.q);
   chrome.tabs.create({ url: tweet.url, active: true });
 }
 
+/**
+ * @param {import("./core/likes.js").LikeView} tweet
+ * @param {HTMLElement} button
+ */
 function copyLink(tweet, button) {
   const done = () => {
     button.classList.add("ok");
@@ -245,12 +260,16 @@ function renderCurrentMode(resetScroll = true) {
 
 function scheduleRender(resetScroll = true) {
   const generation = ++renderGeneration;
-  clearTimeout(renderTimer);
+  if (renderTimer !== null) clearTimeout(renderTimer);
   renderTimer = setTimeout(() => {
     if (generation === renderGeneration) renderCurrentMode(resetScroll);
   }, RENDER_DEBOUNCE_MS);
 }
 
+/**
+ * @param {import("./core/likes.js").LikeIndex} index
+ * @param {boolean} [resetScroll]
+ */
 function applyIndex(index, resetScroll = true) {
   applyIndexModel(index);
   renderCurrentMode(resetScroll);
@@ -266,17 +285,16 @@ function exportLikes() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-posts = createPostsController({
+const posts = createPostsController({
   state: appState,
   els,
   appNow,
-  getBaseLength: () => getCachedBase().length,
   updateCount,
   openTweet,
   copyLink,
 });
-photos = createPhotosController({ state: appState, els, appNow, openTweet });
-sync = createSyncController({
+const photos = createPhotosController({ state: appState, els, appNow, openTweet });
+const sync = createSyncController({
   state: appState,
   showToast,
   updateStatus,
@@ -296,7 +314,7 @@ function wireEvents() {
     updateMatchCountPreview();
     scheduleRender(true);
     maybeShowHistory();
-    clearTimeout(historyTimer);
+    if (historyTimer !== null) clearTimeout(historyTimer);
     historyTimer = setTimeout(() => {
       if (appState.q.length >= 2 && appState.view.length) pushHistory(appState.q);
     }, 1100);
@@ -305,23 +323,25 @@ function wireEvents() {
   els.q.addEventListener("blur", () => setTimeout(() => els.history.classList.remove("show"), 150));
 
   els.history.addEventListener("mousedown", (event) => {
-    const removeButton = event.target.closest("[data-del]");
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const removeButton = target.closest("[data-del]");
     if (removeButton) {
       event.preventDefault();
-      setHistory(removeHistory(getHistory(), removeButton.getAttribute("data-del")));
+      setHistory(removeHistory(getHistory(), removeButton.getAttribute("data-del") || ""));
       renderHistory();
       return;
     }
-    if (event.target.id === "h-clear") {
+    if (target.id === "h-clear") {
       event.preventDefault();
       setHistory([]);
       maybeShowHistory();
       return;
     }
-    const item = event.target.closest(".h-item");
+    const item = target.closest(".h-item");
     if (!item) return;
     event.preventDefault();
-    els.q.value = item.getAttribute("data-q");
+    els.q.value = item.getAttribute("data-q") || "";
     appState.q = els.q.value;
     appState.active = -1;
     els.history.classList.remove("show");
@@ -378,18 +398,24 @@ function wireEvents() {
   });
 
   els.sort.addEventListener("click", (event) => {
-    const button = event.target.closest("button");
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
     if (!button) return;
-    appState.sort = button.dataset.sort;
+    const sort = button.dataset.sort;
+    if (sort !== "newest" && sort !== "oldest" && sort !== "author") return;
+    appState.sort = sort;
     [...els.sort.children].forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
     invalidatePipelineCache();
     renderCurrentMode(true);
   });
 
   els.viewMode.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-mode]");
-    if (!button || button.dataset.mode === appState.mode) return;
-    appState.mode = button.dataset.mode;
+    const button = event.target instanceof Element
+      ? event.target.closest("button[data-mode]")
+      : null;
+    if (!button) return;
+    const mode = /** @type {HTMLElement} */ (button).dataset.mode;
+    if ((mode !== "posts" && mode !== "photos") || mode === appState.mode) return;
+    appState.mode = mode;
     appState.active = -1;
     [...els.viewMode.children].forEach((item) =>
       item.setAttribute("aria-pressed", String(item === button))

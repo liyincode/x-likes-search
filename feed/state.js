@@ -2,6 +2,8 @@ import { normalizeLike } from "../core/likes.js";
 import { matches, pipeline } from "../core/search.js";
 
 /** @typedef {import("../core/likes.js").LikeIndex} LikeIndex */
+/** @typedef {{ indexVersion?: number, [key: string]: unknown }} IndexState */
+/** @typedef {{ running?: boolean, done?: boolean, error?: string, message?: string, [key: string]: unknown }} SyncState */
 
 export const appState = {
   q: "",
@@ -11,11 +13,13 @@ export const appState = {
   rawLikes: /** @type {import("../core/likes.js").LikeRecord[]} */ ([]),
   allLikes: /** @type {import("../core/likes.js").LikeView[]} */ ([]),
   view: /** @type {import("../core/likes.js").LikeView[]} */ ([]),
-  indexState: /** @type {Record<string, unknown>} */ ({}),
-  syncState: /** @type {Record<string, unknown>} */ ({}),
+  indexState: /** @type {IndexState} */ ({}),
+  syncState: /** @type {SyncState} */ ({}),
 };
 
+/** @type {import("../core/likes.js").LikeView[] | null} */
 let cachedBase = null;
+/** @type {"newest" | "oldest" | "author" | null} */
 let cachedSort = null;
 
 export function invalidatePipelineCache() {

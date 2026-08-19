@@ -8,18 +8,40 @@ import {
 const INDEX_REFRESH_MS = 2000;
 const SYNC_RECONCILE_MS = 10000;
 
+/** @typedef {import("../core/likes.js").LikeIndex} LikeIndex */
+/** @typedef {typeof import("./state.js").appState} AppState */
+/** @typedef {{ type: "START_SYNC" | "STOP_SYNC" | "SYNC_STATUS" }} WorkerMessage */
+/** @typedef {{ ok?: boolean, error?: string, alreadyRunning?: boolean, running?: boolean, state?: import("./state.js").SyncState }} WorkerResponse */
+/**
+ * @typedef {{
+ *   state: AppState,
+ *   showToast(message: string): void,
+ *   updateStatus(): void,
+ *   applyIndex(index: LikeIndex, resetScroll?: boolean): void,
+ *   renderCurrentMode(resetScroll?: boolean): void,
+ * }} SyncOptions
+ */
+
+/** @param {SyncOptions} options */
 export function createSyncController({ state, showToast, updateStatus, applyIndex, renderCurrentMode }) {
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let syncReconcileTimer = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let indexRefreshTimer = null;
+  /** @type {LikeIndex | null} */
   let pendingIndex = null;
   let hasPendingIndex = false;
 
+  /**
+   * @param {WorkerMessage} message
+   * @returns {Promise<WorkerResponse | null>}
+   */
   function sendToWorker(message) {
     return new Promise((resolve) => {
       try {
         chrome.runtime.sendMessage({ source: FEED_MESSAGE_SOURCE, ...message }, (response) => {
           void chrome.runtime?.lastError;
-          resolve(response);
+          resolve(/** @type {WorkerResponse | null} */ (response));
         });
       } catch {
         resolve(null);
@@ -28,7 +50,7 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
   }
 
   async function toggle() {
-    const button = document.querySelector("#open-likes");
+    const button = /** @type {HTMLButtonElement | null} */ (document.querySelector("#open-likes"));
     if (button && button.disabled) return;
     if (state.syncState.running) {
       await sendToWorker({ type: "STOP_SYNC" });
@@ -62,7 +84,7 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
 
   function scheduleReconcile() {
     if (!state.syncState.running) {
-      clearTimeout(syncReconcileTimer);
+      if (syncReconcileTimer !== null) clearTimeout(syncReconcileTimer);
       syncReconcileTimer = null;
       return;
     }
@@ -75,7 +97,7 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
   }
 
   function flushPendingIndex() {
-    clearTimeout(indexRefreshTimer);
+    if (indexRefreshTimer !== null) clearTimeout(indexRefreshTimer);
     indexRefreshTimer = null;
     if (!hasPendingIndex) return;
     const index = pendingIndex || {};
@@ -84,6 +106,7 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
     applyIndex(index, false);
   }
 
+  /** @param {LikeIndex | null | undefined} index */
   function queueIndexRefresh(index) {
     pendingIndex = index || {};
     hasPendingIndex = true;
@@ -97,35 +120,41 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
 
   async function loadIndex() {
     const data = await chrome.storage.local.get(STORAGE_KEY);
-    applyIndex(data[STORAGE_KEY] || {});
+    applyIndex(/** @type {LikeIndex} */ (data[STORAGE_KEY] || {}));
   }
 
   async function loadIndexState() {
     const data = await chrome.storage.local.get(STATE_KEY);
-    state.indexState = data[STATE_KEY] || {};
+    state.indexState = /** @type {import("./state.js").IndexState} */ (data[STATE_KEY] || {});
     if (state.mode === "photos") renderCurrentMode(false);
   }
 
+  /**
+   * @param {Record<string, chrome.storage.StorageChange>} changes
+   * @param {string} area
+   */
   function onStorageChanged(changes, area) {
     if (area !== "local") return;
     if (changes[SYNC_KEY]) {
       const wasRunning = state.syncState.running;
-      state.syncState = changes[SYNC_KEY].newValue || {};
+      state.syncState = /** @type {import("./state.js").SyncState} */ (changes[SYNC_KEY].newValue || {});
       updateStatus();
       if (!state.syncState.running) flushPendingIndex();
       if (state.syncState.done && state.syncState.error) showToast(state.syncState.error);
       else if (state.syncState.done && wasRunning) showToast(state.syncState.message || "Sync finished");
     }
-    if (changes[STORAGE_KEY]) queueIndexRefresh(changes[STORAGE_KEY].newValue);
+    if (changes[STORAGE_KEY]) {
+      queueIndexRefresh(/** @type {LikeIndex | undefined} */ (changes[STORAGE_KEY].newValue));
+    }
     if (changes[STATE_KEY]) {
-      state.indexState = changes[STATE_KEY].newValue || {};
+      state.indexState = /** @type {import("./state.js").IndexState} */ (changes[STATE_KEY].newValue || {});
       if (state.mode === "photos") renderCurrentMode(false);
     }
   }
 
   function dispose() {
-    clearTimeout(syncReconcileTimer);
-    clearTimeout(indexRefreshTimer);
+    if (syncReconcileTimer !== null) clearTimeout(syncReconcileTimer);
+    if (indexRefreshTimer !== null) clearTimeout(indexRefreshTimer);
   }
 
   return {
