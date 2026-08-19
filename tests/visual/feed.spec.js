@@ -1,11 +1,10 @@
 const { test, expect } = require("@playwright/test");
-const path = require("node:path");
 const { PNG } = require("pngjs");
 const fixture = require("../fixtures/likes.js");
 
-const root = path.resolve(__dirname, "../..");
-const feedUrl = `file://${path.join(root, "feed.html")}`;
-const designUrl = `file://${path.join(root, "design/x-likes-search/Likes Finder.html")}`;
+const baseUrl = "http://127.0.0.1:4173";
+const feedUrl = `${baseUrl}/feed.html`;
+const designUrl = `${baseUrl}/design/x-likes-search/Likes%20Finder.html`;
 
 async function installChromeMock(page, index = fixture.index, state = fixture.state) {
   await page.addInitScript(({ indexData, stateData }) => {
@@ -88,7 +87,7 @@ async function openFeed(page, index, state) {
 }
 
 function fontFaceCSS() {
-  const fontDir = `file://${path.join(root, "assets/fonts").replaceAll("\\", "/")}`;
+  const fontDir = `${baseUrl}/assets/fonts`;
   return `
     @font-face { font-family: "Space Grotesk"; src: url("${fontDir}/SpaceGrotesk-400.ttf") format("truetype"); font-weight: 400; }
     @font-face { font-family: "Space Grotesk"; src: url("${fontDir}/SpaceGrotesk-500.ttf") format("truetype"); font-weight: 500; }

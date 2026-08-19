@@ -3,9 +3,7 @@
  * Run: npm run test:perf:input
  */
 const { test, expect } = require("@playwright/test");
-const path = require("node:path");
-const root = path.resolve(__dirname, "../..");
-const feedUrl = `file://${path.join(root, "feed.html")}`;
+const feedUrl = "http://127.0.0.1:4173/feed.html";
 const COUNT = 1376;
 
 function mulberry32(seed) {
