@@ -7,13 +7,15 @@
 //      the request authenticate exactly like the page's own call. This survives
 //      navigation/redirects and works from the feed page with no live likes tab.
 
-importScripts("feed-core.js", "background/sync.js", "background/runtime.js");
+import * as Core from "./feed-core.js";
+import { registerRuntimeMessages } from "./background/runtime.js";
+import { createSyncEngine } from "./background/sync.js";
 
 const FEED_URL = chrome.runtime.getURL("feed.html");
-const syncEngine = XLSSync.createSyncEngine({
+const syncEngine = createSyncEngine({
   storage: chrome.storage.local,
   fetchImpl: fetch.bind(globalThis),
-  core: FeedCore,
+  core: Core,
 });
 
 // ---- Toolbar click → open/focus the feed ----
@@ -30,4 +32,4 @@ chrome.action.onClicked.addListener(async () => {
   }
 });
 
-XLSRuntime.registerRuntimeMessages(chrome.runtime, syncEngine);
+registerRuntimeMessages(chrome.runtime, syncEngine);

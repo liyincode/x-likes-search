@@ -1,6 +1,8 @@
-const { test, expect } = require("@playwright/test");
-const { PNG } = require("pngjs");
-const fixture = require("../fixtures/likes.js");
+import { expect, test } from "@playwright/test";
+import pngjs from "pngjs";
+import * as fixture from "../fixtures/likes.js";
+
+const { PNG } = pngjs;
 
 const baseUrl = "http://127.0.0.1:4173";
 const feedUrl = `${baseUrl}/feed.html`;

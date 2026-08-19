@@ -1,7 +1,8 @@
-const { test, expect } = require("@playwright/test");
-const path = require("node:path");
+import { expect, test } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(__dirname, "../..");
+const root = fileURLToPath(new URL("../..", import.meta.url));
 
 test("content script captures the Likes request without injecting sync UI", async ({ page }) => {
   await page.route("https://x.com/i/history/likes", (route) =>

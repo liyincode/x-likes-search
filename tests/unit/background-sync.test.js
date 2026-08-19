@@ -1,12 +1,8 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const vm = require("node:vm");
-const fs = require("node:fs");
-const path = require("node:path");
-const Core = require("../../feed-core.js");
-
-const source = fs.readFileSync(path.resolve(__dirname, "../../background/sync.js"), "utf8");
-const runtimeSource = fs.readFileSync(path.resolve(__dirname, "../../background/runtime.js"), "utf8");
+import assert from "node:assert/strict";
+import test from "node:test";
+import { registerRuntimeMessages } from "../../background/runtime.js";
+import { createSyncEngine } from "../../background/sync.js";
+import * as Core from "../../feed-core.js";
 
 function responseBody() {
   return {
@@ -106,20 +102,13 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     error: console.error.bind(console),
     warn: console.warn.bind(console),
   };
-  const context = {
-    URL,
-    AbortController,
-    console: logger,
-    setTimeout(fn, ms, ...args) { return setTimeout(fn, Math.min(ms, 5), ...args); },
-    clearTimeout,
-  };
-  vm.runInNewContext(source, context, { filename: "background/sync.js" });
-  const engine = context.XLSSync.createSyncEngine({
+  const setTimeoutImpl = (fn, ms, ...args) => setTimeout(fn, Math.min(ms, 5), ...args);
+  const engine = createSyncEngine({
     storage,
     fetchImpl,
     core: Core,
     logger,
-    setTimeoutImpl: context.setTimeout,
+    setTimeoutImpl,
     clearTimeoutImpl: clearTimeout,
   });
 
@@ -146,9 +135,7 @@ test("runtime adapter maps feed messages to the sync engine", async () => {
     stopSync() { calls.push("stop"); },
     async getStatus() { calls.push("status"); return { ok: true, running: false }; },
   };
-  const context = {};
-  vm.runInNewContext(runtimeSource, context, { filename: "background/runtime.js" });
-  context.XLSRuntime.registerRuntimeMessages(runtime, engine);
+  registerRuntimeMessages(runtime, engine);
 
   const send = (message) => new Promise((resolve) => {
     const isAsync = listener(message, {}, resolve);

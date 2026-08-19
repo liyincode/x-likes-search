@@ -1,6 +1,6 @@
-const base = require("./playwright.config.js");
+import base from "./playwright.config.js";
 
-module.exports = {
+export default {
   ...base,
   testDir: "./tests/perf",
   testMatch: "**/*.{spec,perf}.{js,ts}",

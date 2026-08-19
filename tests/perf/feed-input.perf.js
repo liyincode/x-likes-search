@@ -2,7 +2,7 @@
  * Playwright input-to-painted-rows latency (1376 mock likes).
  * Run: npm run test:perf:input
  */
-const { test, expect } = require("@playwright/test");
+import { expect, test } from "@playwright/test";
 const feedUrl = "http://127.0.0.1:4173/feed.html";
 const COUNT = 1376;
 

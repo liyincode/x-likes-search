@@ -1,6 +1,6 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const Core = require("../../feed-core.js");
+import assert from "node:assert/strict";
+import test from "node:test";
+import * as Core from "../../feed-core.js";
 
 test("buildRowOffsets uses expanded height only for active index", () => {
   const layout = Core.buildRowOffsets(4, 2);

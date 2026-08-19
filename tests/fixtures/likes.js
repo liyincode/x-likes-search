@@ -1,4 +1,4 @@
-exports.index = {
+export const index = {
   "1001": {
     tweetId: "1001",
     text: "Spent the morning getting Claude to review a 4k-line PR. Caught two real race conditions.",
@@ -78,7 +78,7 @@ exports.index = {
   },
 };
 
-exports.state = {
+export const state = {
   lastSyncAt: 1780440000000,
   total: 4,
   indexVersion: 2,

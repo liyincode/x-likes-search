@@ -1,8 +1,12 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const Core = require("../../feed-core.js");
-const fixture = require("../fixtures/likes.js");
-const multiPhotoFixture = require("../fixtures/likes-multi-photo.json");
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import * as Core from "../../feed-core.js";
+import * as fixture from "../fixtures/likes.js";
+
+const multiPhotoFixture = JSON.parse(
+  readFileSync(new URL("../fixtures/likes-multi-photo.json", import.meta.url), "utf8")
+);
 
 const likes = Object.values(fixture.index).map(Core.normalizeLike);
 

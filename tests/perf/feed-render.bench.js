@@ -2,9 +2,9 @@
  * Node render benchmarks — legacy full render vs P0 filter vs P1 virtual window.
  * Run: npm run test:perf
  */
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const Core = require("../../feed-core.js");
+import assert from "node:assert/strict";
+import test from "node:test";
+import * as Core from "../../feed-core.js";
 
 const COUNT = 1376;
 const QUERY = "claude design";

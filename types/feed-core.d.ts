@@ -1,5 +1,3 @@
-declare const module: { exports: unknown };
-
 declare namespace XLS {
   type SortMode = "newest" | "oldest" | "author";
   type DateInput = string | number | Date | null | undefined;

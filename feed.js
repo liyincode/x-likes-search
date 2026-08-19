@@ -1,3 +1,5 @@
+import * as Core from "./feed-core.js";
+
 const STORAGE_KEY = "x_likes_index";
 const STATE_KEY = "x_likes_state";
 const SYNC_KEY = "x_likes_sync";
@@ -8,7 +10,6 @@ const INDEX_REFRESH_MS = 2000;
 const SYNC_RECONCILE_MS = 10000;
 const GALLERY_BATCH_SIZE = 60;
 
-const Core = window.FeedCore;
 const $ = (s) => document.querySelector(s);
 
 const els = {
