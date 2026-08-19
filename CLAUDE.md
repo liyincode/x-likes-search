@@ -8,46 +8,45 @@ A Manifest V3 Chrome extension that indexes your X (Twitter) likes locally and l
 
 ## Dev workflow (no build step; tests are optional tooling)
 
-The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is no build step or bundler**, and nothing is compiled before loading. There IS now a `package.json`, but it only carries dev-only test tooling (Playwright, pixelmatch, pngjs) and `npm` scripts; the extension never imports node_modules and ships the source files as-is.
+The extension itself is plain static JS/HTML/CSS loaded unpacked — **there is no build step or bundler**, and nothing is compiled before loading. `package.json` carries dev-only test and type tooling; the extension never imports node_modules and ships the source files as-is.
 
-### Approved ESM migration constraints
+### Native ESM constraints
 
-The current classic-script architecture is being migrated to native ESM without adding a build step. During the migration:
+The service worker, extension page, shared core, and Node tests use native ESM without a build step:
 
 - Preserve all storage schemas, message strings, sync behavior, DOM structure, visual snapshots, and performance contracts.
 - Keep `content.js` and `inject.js` as classic scripts so capture still runs at `document_start` in the required execution worlds.
 - Use only static imports in the module service worker; extension service workers do not support dynamic `import()`.
-- Keep every intermediate implementation commit test-green. The package/Chrome/test ESM cutover must be one atomic format-only commit with no responsibility split mixed into it.
 - Assign mutable state to an owning module. Only genuinely cross-module application state may live in a shared state object; caches, DOM references, layout state, gallery state, and timers remain module-private.
-- Keep internal JSDoc types beside their implementations. Reserve `types/` for external X GraphQL contracts that have no local implementation.
+- Keep internal JSDoc types beside their implementations. Reserve `types/` for external or ambient contracts that have no local implementation.
 - Continue loading the repository root unpacked. Do not introduce `dist/`, a bundler, a watch process, or generated runtime artifacts.
 
 - **Load:** `chrome://extensions` → enable Developer mode → **Load unpacked** → select this folder.
-- **After editing `content.js`, `inject.js`, `background.js`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
-- **After editing `feed.html` / `feed.css` / `feed.js` / `feed-core.js`:** just refresh the feed tab — these are read fresh on load, no extension reload needed.
+- **After editing `content.js`, `inject.js`, `background.js`, `background/`, `core/`, or `manifest.json`:** click **Reload** on the extension card, then **reload the open `x.com` tab** (content/inject scripts only re-run on a fresh page load).
+- **After editing `feed.html`, `feed.css`, `feed.js`, or `feed/`:** refresh the feed tab. Changes under `core/` also require an extension reload because the service worker imports them.
 - **Manual test loop:** open `https://x.com/i/history/likes` and let it load once so the request template is captured, then open the feed via the toolbar icon and click the top-right **sync** button. The extension deliberately adds no controls to X's page.
 
 ### Tests
 
-- `npm run typecheck` — strict TypeScript `checkJs` over `feed-core.js` and `types/feed-core.d.ts`; `noEmit` keeps the extension build-free.
-- `npm run test:unit` — `node:test` over `feed-core.js` logic (no browser, no install of browsers needed).
+- `npm run typecheck` — strict TypeScript `checkJs` over every runtime JS module, with `@types/chrome`; `noEmit` keeps the extension build-free.
+- `npm run test:unit` — `node:test` over DOM-free `core/` and `background/` logic (no browser or installed browser needed).
 - `npm run test:perf` — Node bench comparing legacy full HTML render vs cached filter vs virtual window (~1376 synthetic likes). `npm run test:perf:input` — Playwright input-to-paint latency (optional).
-- `npm run test:visual` — Playwright: mocks `chrome.*`, exercises interactions, and pixel-diffs the implementation against `design/x-likes-search/Likes Finder.html`. Requires `npm install` (+ Playwright's chromium).
+- `npm run test:visual` — Playwright starts the repository's local static server, mocks `chrome.*`, exercises interactions, and pixel-diffs the implementation against `design/x-likes-search/Likes Finder.html`. Requires `npm install` (+ Playwright's chromium).
 - `npm test` — typecheck, unit, and visual suites. Snapshots live in `tests/visual/feed.spec.js-snapshots/`; the `design/` folder is the visual reference and is required by the visual suite.
-- **Put testable logic in `feed-core.js`, not `feed.js`** — `feed-core.js` is DOM-free precisely so it can be unit-tested under Node. Keep its JSDoc annotations and `types/feed-core.d.ts` contracts synchronized; `feed.js` should stay a thin DOM/`chrome.*` binding layer.
+- Put reusable DOM-free logic in `core/`, background synchronization in `background/`, and page controllers in `feed/`. Keep internal JSDoc types beside implementations; `types/` contains only external X and ambient browser contracts.
 
-## Architecture: three execution worlds
+## Architecture: four execution worlds
 
-The hard part of this codebase is that code runs in three isolated JavaScript contexts that cannot call each other directly — they communicate only by message passing. Understanding this split is essential before changing anything.
+The hard part of this codebase is that code runs in four isolated JavaScript contexts that cannot call each other directly — they communicate only by message passing or shared extension storage. Understanding this split is essential before changing anything.
 
 1. **Page world — `inject.js`** (injected by `content.js` via a `<script>` tag, runs at `document_start`). This is the only context with the page's real `fetch`, cookies, and auth state. It:
    - Patches `window.fetch` and `XMLHttpRequest` to detect X's Likes GraphQL call (`LIKES_URL_RE`) and capture its URL + headers.
 
 2. **Content-script world — `content.js`** (runs at `document_start` on x.com/twitter.com). It injects `inject.js`, receives `TEMPLATE_CAPTURED`, and persists the request template through `chrome.storage`. It does not render UI or run a sync loop.
 
-3. **Service worker — `background.js`** (`importScripts("feed-core.js")`). This is where the **primary sync runs**. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })` directly: the extension's `host_permissions` make the browser attach the user's x.com cookies, and the captured `x-csrf-token`/bearer headers authenticate the call. No x.com tab is involved, so it survives redirects/navigation. It owns pagination, retry/backoff, and writes progress to `x_likes_sync`.
+3. **Module service worker — `background.js`** (`manifest.json` declares `"type": "module"`). It statically imports `background/runtime.js`, `background/sync.js`, and DOM-free modules from `core/`. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })`; no x.com tab is involved.
 
-4. **Extension page — `feed.html` + `feed.js` + `feed-core.js`** (opened as a tab by `background.js` on toolbar click). Has `chrome.tabs`/`chrome.storage` but no access to x.com pages. `feed-core.js` is the DOM-free logic core (UMD; also `require`d by unit tests); `feed.js` is a thin DOM/`chrome.*` layer that renders the searchable Posts view, independent Photos gallery/lightbox, and **drives a sync by messaging the service worker** (no tab juggling).
+4. **Module extension page — `feed.html` + `feed.js` + `feed/` + `core/`** (opened by `background.js`). `feed.js` composes page behavior; `feed/state.js`, `feed/posts.js`, `feed/photos.js`, and `feed/sync.js` own their state and responsibilities. It drives sync by messaging the service worker.
 
 ### Message protocols
 
@@ -61,8 +60,9 @@ Two separate channels — keep the string constants in sync across files:
 
 ### Storage schema (`chrome.storage.local`)
 
-Key-name constants are **duplicated** across files and must stay identical:
-- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts`, photo-only `media[]`, and `mediaSource` when media came from a wrapped source tweet. `feed-core.js`'s `normalizeLike` maps these raw records into the search view model — keep that mapping in sync with what the parser writes.
+Module-world key constants live in `core/constants.js`. `content.js` and `inject.js` remain classic scripts in isolated worlds, so their documented protocol/storage strings are manual copies that must stay identical.
+
+- `x_likes_index` — the main dataset: a map of `tweetId → { tweetId, text, datetime, author, displayName, avatar, url, capturedAt }`, plus optional `likes` / `reposts`, photo-only `media[]`, and `mediaSource` when media came from a wrapped source tweet. `core/likes.js` maps these records into the search view model; keep that mapping aligned with the parser.
 - `x_likes_state` — `{ lastSyncAt, total, completed, indexVersion }`. `completed` records whether the last crawl reached a natural end; `indexVersion` advances only after a complete crawl has backfilled stored records.
 - `x_likes_template` — the captured `{ url, headers, method }` used for replay.
 - `x_likes_sync` — **transient** sync progress written by the SW and watched by the feed: `{ running, done, complete, page, checked, added, removed, total, message, error, stopped, startedAt }`. The worker also keeps the latest value in memory so a storage failure can still be reported through `SYNC_STATUS`.
@@ -71,7 +71,7 @@ The feed auto-refreshes via `chrome.storage.onChanged`, so a SW sync live-update
 
 ## Two fragile spots tied to X's internals
 
-- **`parseLikesResponse` in `feed-core.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata from `legacy.extended_entities.media`, the bottom cursor, and non-sensitive response-shape diagnostics (`instructionTypes`, raw tweet-entry count, terminate direction). It is consumed by the service-worker sync and unit tests. It uses defensive optional-chaining fallbacks (e.g. `legacy` vs `core`, `note_tweet` vs `full_text`). Update it when extraction breaks.
+- **`parseLikesResponse` in `core/x-likes-parser.js`** walks X's GraphQL timeline `instructions`/`entries` to extract tweets, photo metadata, the bottom cursor, and non-sensitive response-shape diagnostics. Its external response types live in `types/x-api.d.ts`; update both when X changes the response.
 - **`LIKES_URL_RE` in `inject.js`** (`/graphql/<hash>/Likes`) matches the endpoint regardless of the rotating query hash, so capture survives X's hash churn. The sync loops mutate only the `cursor` field inside the URL's `variables` JSON param, preserving everything else X sent. (Note: the *stored template URL* still pins a specific hash; if X rotates it the replay can 404, which surfaces as a sync error telling the user to refresh their likes page to recapture.)
 
 ### Sync loop termination & robustness (`background.js`)

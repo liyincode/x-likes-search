@@ -88,7 +88,7 @@ npm run test:perf
 npm test
 ```
 
-The extension source is plain HTML, CSS, and JavaScript. TypeScript checks `feed-core.js` through JSDoc without emitting build artifacts; the extension still loads the source files directly.
+The extension source is plain HTML, CSS, and native ES modules. TypeScript checks every runtime JavaScript module through JSDoc without emitting build artifacts; Chrome still loads the source files directly with no bundler or generated `dist/` directory.
 
 ## License
 

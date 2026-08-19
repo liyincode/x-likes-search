@@ -86,7 +86,7 @@ npm run test:perf
 npm test
 ```
 
-扩展源码仍然是普通 HTML、CSS 和 JavaScript。TypeScript 通过 JSDoc 检查 `feed-core.js`，不会生成构建产物，扩展仍直接加载源码文件。
+扩展源码仍然是普通 HTML、CSS 和原生 ES Module。TypeScript 通过 JSDoc 检查全部运行时 JavaScript 模块，不生成构建产物；Chrome 仍直接加载源码，不需要 bundler 或生成 `dist/` 目录。
 
 ## License
 

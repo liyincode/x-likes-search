@@ -2,10 +2,13 @@
 
 ## Current Stage
 
-- Prepare v0.5.0 liked-photo gallery for manual release validation.
+- Prepare v0.5.0 for final unpacked-extension validation after the native ESM migration.
 
 ## Completed
 
+- 2026-08-19: Migrated the service worker, extension page, shared logic, tests, fixtures, and Playwright configs to native ESM without adding a build step; preserved classic `content.js` / `inject.js` boundaries and static-only service-worker imports.
+- 2026-08-19: Split shared logic into responsibility-owned `core/` modules and the feed into state, posts, photos, and sync controllers. Removed the UMD `feed-core.js` and its duplicated 208-line declaration file after direct consumers and tests moved to the new modules.
+- 2026-08-19: Replaced `file://` visual fixtures with an automatically managed Node static server and expanded strict JSDoc `checkJs` coverage to every runtime module with `@types/chrome`, while keeping zero emitted artifacts.
 - 2026-08-18: Reconciled unliked records at X's observed Likes terminal shape: a real full sync ended with `TimelineAddEntries`, an unchanged Bottom cursor, and zero raw, parsed, or new tweet entries. The worker now re-requests that cursor once and treats two stable empty fixed points as the tail; content-bearing repeats and all other incomplete runs still preserve local data.
 - 2026-08-18: Prevented captured pagination state from changing sync origin: the worker now strips a template cursor from base variables, starts at the Likes head, preserves all other variables, and uses only cursors returned during the current run. Added non-sensitive timeline-shape diagnostics for terminal-response investigation.
 - 2026-08-18: Made long-running sync observable and bounded: the feed now shows page/checked/addition progress, each page request times out after 30 seconds with finite retries, and Stop aborts the active request immediately.
@@ -25,7 +28,7 @@
 
 ## In Progress
 
-- Reload the unpacked extension and run one real Sync to verify that a cancelled like is removed after the twice-confirmed empty repeated-cursor tail.
+- Reload the unpacked extension in Chrome, confirm the module service worker has no startup errors, refresh the feed, and run one real Sync to verify that a cancelled like is removed after the twice-confirmed empty repeated-cursor tail. Automated browser control cannot access `chrome://extensions` or `chrome-extension://` pages, so this remains a manual check.
 
 ## Todo / Blocked
 
@@ -33,6 +36,8 @@
 
 ## Recent Verification
 
+- 2026-08-19: `npm test` — strict JSDoc checking across all runtime modules, 34 unit tests, and 14 HTTP-served Playwright tests passed after the ESM/module split; visual snapshots remained unchanged.
+- 2026-08-19: `npm run test:perf` and `npm run test:perf:input` passed after the final type pass; virtual rendering was 32.3× faster than the full-render baseline and input-to-painted-rows median was 230.0 ms in this run.
 - 2026-08-18: `npm test` — TypeScript strict checking, 33 unit tests, and 14 Playwright tests passed after adding the twice-confirmed empty repeated-cursor tail; coverage verifies stable-tail deletion, content-bearing confirmation preservation, and continued pagination when confirmation advances.
 - 2026-08-18: `npm run test:perf` — feed render benchmark passed after terminal reconciliation; virtual rendering was 30.0× faster than the full-render baseline in this run.
 - 2026-08-18: `npm test` — TypeScript strict checking, 30 unit tests, and 14 Playwright tests passed after cleaning captured cursors and adding response-shape diagnostics; coverage verifies the first request omits a captured cursor, the second uses the current run's cursor, non-cursor variables survive, and raw/unparsed tweet entries remain distinguishable.
