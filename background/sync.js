@@ -1,9 +1,19 @@
+import {
+  INDEX_VERSION,
+  STATE_KEY,
+  STORAGE_KEY,
+  SYNC_KEY,
+  TEMPLATE_KEY,
+} from "../core/constants.js";
+import { mergeLikes } from "../core/likes.js";
+import { setStorageRequired } from "../core/storage.js";
+import { parseLikesResponse } from "../core/x-likes-parser.js";
+
 // DOM-free sync engine shared by the module service worker and Node tests.
 
 export function createSyncEngine(dependencies) {
   const storage = dependencies.storage;
   const fetchImpl = dependencies.fetchImpl;
-  const core = dependencies.core;
   const now = dependencies.now || Date.now;
   const logger = dependencies.logger || console;
   const setTimeoutImpl = dependencies.setTimeoutImpl || setTimeout;
@@ -12,10 +22,6 @@ export function createSyncEngine(dependencies) {
   const fetchTimeoutMs = dependencies.fetchTimeoutMs ?? 30000;
   const pageDelayMs = dependencies.pageDelayMs ?? 700;
   const tailConfirmDelayMs = dependencies.tailConfirmDelayMs ?? 1000;
-  const STORAGE_KEY = "x_likes_index";
-  const STATE_KEY = "x_likes_state";
-  const TEMPLATE_KEY = "x_likes_template";
-  const SYNC_KEY = "x_likes_sync";
 
 let syncing = false;
 let stopRequested = false;
@@ -39,7 +45,7 @@ async function getLocal(keys) {
 }
 
 async function setLocalRequired(items) {
-  return core.setStorageRequired(storage, items);
+  return setStorageRequired(storage, items);
 }
 
 function updateLiveSyncState(patch) {
@@ -245,7 +251,7 @@ async function syncLoop(template) {
   const index = (await getLocal(STORAGE_KEY))[STORAGE_KEY] || {};
   const prevState = (await getLocal(STATE_KEY))[STATE_KEY] || {};
 
-  const needsMediaBackfill = Number(prevState.indexVersion || 0) < core.INDEX_VERSION;
+  const needsMediaBackfill = Number(prevState.indexVersion || 0) < INDEX_VERSION;
 
   let total = Object.keys(index).length;
   let added = 0;
@@ -325,7 +331,7 @@ async function syncLoop(template) {
       rawTweetEntryCount,
       instructionTypes,
       terminateDirection,
-    } = core.parseLikesResponse(body);
+    } = parseLikesResponse(body);
     const seenBeforePage = seenTweetIds.size;
     if (timelineFound) {
       for (const tweet of tweets) seenTweetIds.add(tweet.tweetId);
@@ -361,7 +367,7 @@ async function syncLoop(template) {
     pages += 1;
     mediaFallbacks += mediaFallbackCount;
 
-    const merged = core.mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
+    const merged = mergeLikes(index, tweets, { updateMedia: needsMediaBackfill });
     added += merged.added;
     mediaUpdated += merged.mediaUpdated;
     total += merged.added;
@@ -427,7 +433,7 @@ async function syncLoop(template) {
   const completed = reachedTail && !stopRequested;
   const nextState = { ...prevState, lastSyncAt: now(), total, completed };
   if (reachedTail && !stopRequested && needsMediaBackfill) {
-    nextState.indexVersion = core.INDEX_VERSION;
+    nextState.indexVersion = INDEX_VERSION;
   }
   await setLocalRequired({
     [STATE_KEY]: nextState,

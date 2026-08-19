@@ -1,8 +1,10 @@
+import { FEED_MESSAGE_SOURCE } from "../core/constants.js";
+
 // Runtime message adapter shared by the module service worker and Node tests.
 
 export function registerRuntimeMessages(runtime, engine) {
   runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (!msg || msg.source !== "xls-feed") return false;
+    if (!msg || msg.source !== FEED_MESSAGE_SOURCE) return false;
     if (msg.type === "START_SYNC") {
       engine.startSync().then(sendResponse);
       return true;

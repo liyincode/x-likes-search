@@ -10,6 +10,7 @@
 
   function postCaptured(template) {
     window.postMessage(
+      // Manual protocol copy shared with the classic content.js bridge.
       { source: "xls", type: "TEMPLATE_CAPTURED", template },
       "*"
     );

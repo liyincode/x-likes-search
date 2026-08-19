@@ -7,7 +7,6 @@
 //      the request authenticate exactly like the page's own call. This survives
 //      navigation/redirects and works from the feed page with no live likes tab.
 
-import * as Core from "./feed-core.js";
 import { registerRuntimeMessages } from "./background/runtime.js";
 import { createSyncEngine } from "./background/sync.js";
 
@@ -15,7 +14,6 @@ const FEED_URL = chrome.runtime.getURL("feed.html");
 const syncEngine = createSyncEngine({
   storage: chrome.storage.local,
   fetchImpl: fetch.bind(globalThis),
-  core: Core,
 });
 
 // ---- Toolbar click → open/focus the feed ----

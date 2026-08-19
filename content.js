@@ -2,6 +2,7 @@
 // persists the authenticated Likes GraphQL request template it captures.
 
 (() => {
+  // Manual copy of core/constants.js: content scripts cannot import ESM.
   const TEMPLATE_KEY = "x_likes_template";
 
   function extensionAlive() {
@@ -27,6 +28,7 @@
     const message = event.data;
     if (
       !message ||
+      // Manual protocol copy shared with the page-world inject.js.
       message.source !== "xls" ||
       message.type !== "TEMPLATE_CAPTURED" ||
       !message.template?.url

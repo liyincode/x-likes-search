@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as Core from "../../feed-core.js";
+import { countMatches } from "../../core/search.js";
+import * as Core from "../../core/virtual-list.js";
 
 test("buildRowOffsets uses expanded height only for active index", () => {
   const layout = Core.buildRowOffsets(4, 2);
@@ -39,6 +40,6 @@ test("visibleRange covers active row near scroll center", () => {
 
 test("countMatches returns full length for empty query", () => {
   const list = [{ searchHay: "alpha" }, { searchHay: "beta" }];
-  assert.equal(Core.countMatches(list, ""), 2);
-  assert.equal(Core.countMatches(list, "beta"), 1);
+  assert.equal(countMatches(list, ""), 2);
+  assert.equal(countMatches(list, "beta"), 1);
 });

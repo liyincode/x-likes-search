@@ -1,8 +1,19 @@
-import * as Core from "./feed-core.js";
-
-const STORAGE_KEY = "x_likes_index";
-const STATE_KEY = "x_likes_state";
-const SYNC_KEY = "x_likes_sync";
+import {
+  FEED_MESSAGE_SOURCE,
+  INDEX_VERSION,
+  STATE_KEY,
+  STORAGE_KEY,
+  SYNC_KEY,
+} from "./core/constants.js";
+import { avatarColors, escapeHTML, fullDate, initials, relativeDate } from "./core/format.js";
+import { flattenPhotoItems, mediaUrl, normalizeLike } from "./core/likes.js";
+import { addHistory, countMatches, highlight, matches, pipeline, removeHistory } from "./core/search.js";
+import {
+  buildRowOffsets,
+  ROW_ACTIVE_EXPANDED,
+  ROW_COLLAPSED,
+  visibleRange,
+} from "./core/virtual-list.js";
 const HISTORY_KEY = "finder-history";
 const THEME_KEY = "finder-theme";
 const RENDER_DEBOUNCE_MS = 200;
@@ -74,7 +85,7 @@ let rowLayout = { tops: [], heights: [], totalHeight: 0 };
 let virtualSpacer = null;
 let virtualWindow = null;
 let resultsWired = false;
-let activeRowHeight = Core.ROW_ACTIVE_EXPANDED;
+let activeRowHeight = ROW_ACTIVE_EXPANDED;
 let activeRowHeightId = null;
 
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
@@ -97,7 +108,7 @@ function getCachedBase() {
   const key = pipelineCacheKey();
   if (cachedBase && cachedPipelineKey === key) return cachedBase;
   cachedPipelineKey = key;
-  cachedBase = Core.pipeline(appState.allLikes, appState.sort);
+  cachedBase = pipeline(appState.allLikes, appState.sort);
   return cachedBase;
 }
 
@@ -114,7 +125,7 @@ function setHistory(arr) {
 }
 
 function pushHistory(q) {
-  setHistory(Core.addHistory(getHistory(), q));
+  setHistory(addHistory(getHistory(), q));
 }
 
 function renderHistory() {
@@ -127,9 +138,9 @@ function renderHistory() {
     '<div class="h-lbl">recent searches<span class="clr" id="h-clear">clear</span></div>' +
     items
       .map(
-        (q) => `<div class="h-item" data-q="${Core.escapeHTML(q)}">
+        (q) => `<div class="h-item" data-q="${escapeHTML(q)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>
-          <span>${Core.escapeHTML(q)}</span><span class="x" data-del="${Core.escapeHTML(q)}">✕</span>
+          <span>${escapeHTML(q)}</span><span class="x" data-del="${escapeHTML(q)}">✕</span>
         </div>`
       )
       .join("");
@@ -228,16 +239,16 @@ function updateMatchCountPreview() {
     els.count.style.display = "none";
     return;
   }
-  const n = Core.countMatches(getCachedBase(), appState.q);
+  const n = countMatches(getCachedBase(), appState.q);
   els.count.innerHTML = `<b>…</b> / ${n} in ${appState.allLikes.length}`;
   els.count.style.display = "";
 }
 
 function avatarHTML(t) {
-  const c = Core.avatarColors(t.author.hue);
-  const fallback = `<span class="av-fallback">${Core.initials(t.author.name)}</span>`;
+  const c = avatarColors(t.author.hue);
+  const fallback = `<span class="av-fallback">${initials(t.author.name)}</span>`;
   const img = t.author.avatar
-    ? `<img src="${Core.escapeHTML(t.author.avatar)}" alt="" referrerpolicy="no-referrer" />`
+    ? `<img src="${escapeHTML(t.author.avatar)}" alt="" referrerpolicy="no-referrer" />`
     : "";
   return `<div class="av" style="background:linear-gradient(135deg, ${c.bg}, ${c.bg2})">${img}${fallback}</div>`;
 }
@@ -248,14 +259,14 @@ function rowHTML(t, i) {
     : "";
   const active = i === appState.active ? " active" : "";
   return `
-    <div class="row${active}" data-i="${i}" data-id="${Core.escapeHTML(t.tweetId)}">
+    <div class="row${active}" data-i="${i}" data-id="${escapeHTML(t.tweetId)}">
       ${avatarHTML(t)}
       <div class="meta">
         <div class="line1">
-          <span class="nm">${Core.highlight(t.author.name, appState.q)}</span>
-          <span class="hd">@${Core.highlight(t.author.handle, appState.q)}</span>
+          <span class="nm">${highlight(t.author.name, appState.q)}</span>
+          <span class="hd">@${highlight(t.author.handle, appState.q)}</span>
         </div>
-        <div class="snip">${Core.highlight(t.text, appState.q) || '<span style="opacity:.55">(no text — link only)</span>'}</div>
+        <div class="snip">${highlight(t.text, appState.q) || '<span style="opacity:.55">(no text — link only)</span>'}</div>
         <div class="expand">
           <div class="row-actions">
             ${stats}
@@ -265,18 +276,18 @@ function rowHTML(t, i) {
           </div>
         </div>
       </div>
-      <div class="when" title="${Core.escapeHTML(Core.fullDate(t.date))}">${Core.relativeDate(t.date, appNow())}</div>
+      <div class="when" title="${escapeHTML(fullDate(t.date))}">${relativeDate(t.date, appNow())}</div>
     </div>`;
 }
 
 function galleryCardHTML(item, i) {
   const alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
-  return `<button class="gallery-card" data-gallery-i="${i}" aria-label="${Core.escapeHTML(alt)}">
-    <img src="${Core.escapeHTML(Core.mediaUrl(item.media.url, "small"))}" alt="${Core.escapeHTML(alt)}" loading="lazy" referrerpolicy="no-referrer" />
+  return `<button class="gallery-card" data-gallery-i="${i}" aria-label="${escapeHTML(alt)}">
+    <img src="${escapeHTML(mediaUrl(item.media.url, "small"))}" alt="${escapeHTML(alt)}" loading="lazy" referrerpolicy="no-referrer" />
     <span class="gallery-placeholder">image unavailable</span>
     <span class="gallery-meta">
-      <strong>${Core.escapeHTML(item.tweet.author.name)}</strong>
-      <span>${Core.escapeHTML(Core.relativeDate(item.tweet.date, appNow()))}</span>
+      <strong>${escapeHTML(item.tweet.author.name)}</strong>
+      <span>${escapeHTML(relativeDate(item.tweet.date, appNow()))}</span>
     </span>
   </button>`;
 }
@@ -298,7 +309,7 @@ function renderLightbox() {
   }
   els.lightbox.querySelector(".lb-stage").classList.remove("is-error");
   els.lightboxImage.alt = item.media.altText || `Photo by ${item.tweet.author.name}`;
-  els.lightboxImage.src = Core.mediaUrl(item.media.url, "large");
+  els.lightboxImage.src = mediaUrl(item.media.url, "large");
   els.lightboxAuthor.textContent = item.tweet.author.name;
   els.lightboxHandle.textContent = item.tweet.author.handle ? `@${item.tweet.author.handle}` : "";
   els.lightboxCount.textContent = `${lightboxIndex + 1} / ${galleryItems.length}`;
@@ -399,14 +410,14 @@ function syncActiveRowHeightIdentity() {
   const id = appState.active >= 0 ? appState.view[appState.active]?.tweetId || String(appState.active) : null;
   if (id !== activeRowHeightId) {
     activeRowHeightId = id;
-    activeRowHeight = Core.ROW_ACTIVE_EXPANDED;
+    activeRowHeight = ROW_ACTIVE_EXPANDED;
   }
 }
 
 function measureActiveRowHeight() {
   const row = virtualWindow?.querySelector(".row.active");
   if (!row) return false;
-  const measured = Math.max(Core.ROW_ACTIVE_EXPANDED, Math.ceil(row.getBoundingClientRect().height));
+  const measured = Math.max(ROW_ACTIVE_EXPANDED, Math.ceil(row.getBoundingClientRect().height));
   if (Math.abs(measured - activeRowHeight) <= 1) return false;
   activeRowHeight = measured;
   return true;
@@ -414,7 +425,7 @@ function measureActiveRowHeight() {
 
 function rebuildRowLayout() {
   syncActiveRowHeightIdentity();
-  rowLayout = Core.buildRowOffsets(appState.view.length, appState.active, Core.ROW_COLLAPSED, activeRowHeight);
+  rowLayout = buildRowOffsets(appState.view.length, appState.active, ROW_COLLAPSED, activeRowHeight);
   if (virtualSpacer) virtualSpacer.style.height = `${rowLayout.totalHeight}px`;
 }
 
@@ -437,7 +448,7 @@ function paintVisible(resetScroll) {
   if (resetScroll) els.feedScroll.scrollTop = els.results.offsetTop;
 
   const { scrollTop, vh } = listViewport();
-  const { start, end } = Core.visibleRange(scrollTop, vh, rowLayout);
+  const { start, end } = visibleRange(scrollTop, vh, rowLayout);
 
   if (end < start) {
     virtualWindow.innerHTML = "";
@@ -495,7 +506,7 @@ function openTweet(t) {
 function sendToWorker(msg) {
   return new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage({ source: "xls-feed", ...msg }, (res) => {
+      chrome.runtime.sendMessage({ source: FEED_MESSAGE_SOURCE, ...msg }, (res) => {
         void chrome.runtime?.lastError;
         resolve(res);
       });
@@ -570,7 +581,7 @@ function copyLink(t, btn) {
 function rebuildView() {
   const base = getCachedBase();
   if (!appState.q) appState.view = base;
-  else appState.view = base.filter((t) => Core.matches(t, appState.q));
+  else appState.view = base.filter((t) => matches(t, appState.q));
 
   if (appState.q && appState.active < 0 && appState.view.length) appState.active = 0;
   if (appState.active >= appState.view.length) appState.active = appState.view.length ? 0 : -1;
@@ -583,10 +594,10 @@ function renderEmptyState() {
   if (appState.mode === "photos") {
     els.gallery.innerHTML = "";
     galleryRendered = 0;
-    if (Number(appState.indexState.indexVersion || 0) < Core.INDEX_VERSION) {
+    if (Number(appState.indexState.indexVersion || 0) < INDEX_VERSION) {
       els.empty.innerHTML = `<div class="empty"><div class="big">Photos need indexing</div><p>Run sync once to add photos to your existing likes.</p></div>`;
     } else if (appState.q) {
-      els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${Core.escapeHTML(appState.q)}"</span></p></div>`;
+      els.empty.innerHTML = `<div class="empty"><div class="big">No matching photos</div><p>No liked photos match <span class="q">"${escapeHTML(appState.q)}"</span></p></div>`;
     } else {
       els.empty.innerHTML = `<div class="empty"><div class="big">No liked photos</div><p>Your indexed likes do not contain photos yet.</p></div>`;
     }
@@ -597,7 +608,7 @@ function renderEmptyState() {
   virtualSpacer = null;
   virtualWindow = null;
   if (appState.allLikes.length) {
-    els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${Core.escapeHTML(appState.q)}"</span></p></div>`;
+    els.empty.innerHTML = `<div class="empty"><div class="big">No matches</div><p>Nothing liked matches <span class="q">"${escapeHTML(appState.q)}"</span></p></div>`;
   } else {
     els.empty.innerHTML = `
         <div class="empty">
@@ -639,7 +650,7 @@ function renderGallery(resetScroll) {
 
 function renderCurrentMode(resetScroll = true) {
   rebuildView();
-  galleryItems = appState.mode === "photos" ? Core.flattenPhotoItems(appState.view) : [];
+  galleryItems = appState.mode === "photos" ? flattenPhotoItems(appState.view) : [];
   if (lightboxIndex >= galleryItems.length) closeLightbox();
   document.body.dataset.mode = appState.mode;
   updateStatus();
@@ -667,7 +678,7 @@ function move(delta) {
 
 function applyIndex(index, resetScroll = true) {
   appState.rawLikes = Object.values(index);
-  appState.allLikes = appState.rawLikes.map(Core.normalizeLike);
+  appState.allLikes = appState.rawLikes.map(normalizeLike);
   invalidatePipelineCache();
   renderCurrentMode(resetScroll);
 }
@@ -738,7 +749,7 @@ function wireEvents() {
     const del = e.target.closest("[data-del]");
     if (del) {
       e.preventDefault();
-      setHistory(Core.removeHistory(getHistory(), del.getAttribute("data-del")));
+      setHistory(removeHistory(getHistory(), del.getAttribute("data-del")));
       renderHistory();
       return;
     }

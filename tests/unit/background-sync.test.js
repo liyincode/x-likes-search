@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerRuntimeMessages } from "../../background/runtime.js";
 import { createSyncEngine } from "../../background/sync.js";
-import * as Core from "../../feed-core.js";
+import { INDEX_VERSION } from "../../core/constants.js";
 
 function responseBody() {
   return {
@@ -106,7 +106,6 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
   const engine = createSyncEngine({
     storage,
     fetchImpl,
-    core: Core,
     logger,
     setTimeoutImpl,
     clearTimeoutImpl: clearTimeout,
@@ -280,7 +279,7 @@ test("worker forces a full media backfill and upgrades the index only at the nat
   assert.equal(harness.store.x_likes_index["1"].capturedAt, 123);
   assert.equal(harness.store.x_likes_index["1"].media.length, 1);
   assert.equal(harness.store.x_likes_state.completed, true);
-  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
+  assert.equal(harness.store.x_likes_state.indexVersion, INDEX_VERSION);
 });
 
 test("worker reconciles a stale persisted running state after restart", async () => {
@@ -307,7 +306,7 @@ test("worker removes unseen likes after reaching a recognized timeline tail", as
     x_likes_index: {
       "1": { tweetId: "1", text: "unliked", capturedAt: 123 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION - 1 },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION - 1 },
   }, null, body);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -322,7 +321,7 @@ test("worker removes unseen likes after reaching a recognized timeline tail", as
   assert.equal(status.state.total, 0);
   assert.deepEqual(Object.keys(harness.store.x_likes_index), []);
   assert.match(status.state.message, /-1/);
-  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION);
+  assert.equal(harness.store.x_likes_state.indexVersion, INDEX_VERSION);
 });
 
 test("worker removes a captured cursor only from the first request", async () => {
@@ -336,7 +335,7 @@ test("worker removes a captured cursor only from the first request", async () =>
   const harness = createHarness({
     x_likes_template: { url: templateUrl.toString(), headers: {}, method: "GET" },
     x_likes_index: {},
-    x_likes_state: { completed: false, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: false, indexVersion: INDEX_VERSION },
   }, null, ({ call }) => pages[call - 1]);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -395,7 +394,7 @@ test("ordinary sync continues through known pages to reconcile the true tail", a
       "4": { tweetId: "4", text: "four", capturedAt: 4 },
       stale: { tweetId: "stale", text: "unliked", capturedAt: 5 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION },
   }, null, ({ call }) => pages[call - 1]);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -423,7 +422,7 @@ test("worker confirms a stable empty cursor fixed point before removing unliked 
       "1": { tweetId: "1", text: "seen", capturedAt: 1 },
       stale: { tweetId: "stale", text: "unliked", capturedAt: 2 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION },
   }, null, ({ call }) => pages[call - 1]);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -450,7 +449,7 @@ test("worker preserves local likes when fixed-point confirmation returns new con
       "1": { tweetId: "1", text: "seen", capturedAt: 1 },
       stale: { tweetId: "stale", text: "keep on anomaly", capturedAt: 2 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION },
   }, null, ({ call }) => pages[call - 1]);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -486,7 +485,7 @@ test("worker continues when fixed-point confirmation advances the cursor", async
       "3": { tweetId: "3", text: "three", capturedAt: 3 },
       stale: { tweetId: "stale", text: "unliked", capturedAt: 4 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION },
   }, null, ({ call }) => pages[call - 1]);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -516,7 +515,7 @@ test("worker never removes likes when pagination repeats before the tail", async
       "1": { tweetId: "1", text: "seen", capturedAt: 123 },
       "2": { tweetId: "2", text: "not reached", capturedAt: 124 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION - 1 },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION - 1 },
   }, null, body);
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });
@@ -530,7 +529,7 @@ test("worker never removes likes when pagination repeats before the tail", async
   assert.equal(status.state.removed, 0);
   assert.equal(status.state.complete, false);
   assert.ok(harness.store.x_likes_index["2"]);
-  assert.equal(harness.store.x_likes_state.indexVersion, Core.INDEX_VERSION - 1);
+  assert.equal(harness.store.x_likes_state.indexVersion, INDEX_VERSION - 1);
 });
 
 test("worker preserves local likes when X returns an unrecognized response shape", async () => {
@@ -541,7 +540,7 @@ test("worker preserves local likes when X returns an unrecognized response shape
     x_likes_index: {
       "1": { tweetId: "1", text: "keep me", capturedAt: 123 },
     },
-    x_likes_state: { completed: true, indexVersion: Core.INDEX_VERSION },
+    x_likes_state: { completed: true, indexVersion: INDEX_VERSION },
   }, null, { data: {} });
 
   await harness.send({ source: "xls-feed", type: "START_SYNC" });

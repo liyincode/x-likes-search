@@ -10,6 +10,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["feed-core.js", "types/**/*.d.ts"],
+  "include": ["core/**/*.js", "types/**/*.d.ts"],
   "exclude": ["node_modules", "design", "tests"]
 }

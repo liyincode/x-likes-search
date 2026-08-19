@@ -4,7 +4,12 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as Core from "../../feed-core.js";
+import * as FormatCore from "../../core/format.js";
+import * as LikesCore from "../../core/likes.js";
+import * as SearchCore from "../../core/search.js";
+import * as VirtualCore from "../../core/virtual-list.js";
+
+const Core = { ...FormatCore, ...LikesCore, ...SearchCore, ...VirtualCore };
 
 const COUNT = 1376;
 const QUERY = "claude design";

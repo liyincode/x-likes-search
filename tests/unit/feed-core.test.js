@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import * as Core from "../../feed-core.js";
+import * as FormatCore from "../../core/format.js";
+import * as LikesCore from "../../core/likes.js";
+import * as SearchCore from "../../core/search.js";
+import * as StorageCore from "../../core/storage.js";
+import * as ParserCore from "../../core/x-likes-parser.js";
 import * as fixture from "../fixtures/likes.js";
+
+const Core = { ...FormatCore, ...LikesCore, ...SearchCore, ...StorageCore, ...ParserCore };
 
 const multiPhotoFixture = JSON.parse(
   readFileSync(new URL("../fixtures/likes-multi-photo.json", import.meta.url), "utf8")
