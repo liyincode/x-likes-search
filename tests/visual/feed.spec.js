@@ -394,6 +394,10 @@ test("starts and stops sync through the background worker", async ({ page }) => 
 });
 
 test("browses, searches, navigates, and opens liked photos", async ({ page }) => {
+  const ariaWarnings = [];
+  page.on("console", (message) => {
+    if (message.text().includes("Blocked aria-hidden")) ariaWarnings.push(message.text());
+  });
   await openFeed(page);
   await page.locator('[data-mode="photos"]').click();
 
@@ -404,6 +408,7 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   const firstPhoto = page.locator(".gallery-card").first();
   await firstPhoto.click();
   await expect(page.locator("#lightbox")).toBeVisible();
+  await expect(page.locator("#lightbox")).not.toHaveAttribute("aria-hidden");
   await expect(page.locator("#lb-author")).toHaveText("Devon Park");
   await expect(page.locator("#lb-count")).toHaveText("1 / 4");
   await page.keyboard.press("ArrowRight");
@@ -415,7 +420,9 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   });
   await page.keyboard.press("Escape");
   await expect(page.locator("#lightbox")).toBeHidden();
+  await expect(page.locator("#lightbox")).not.toHaveAttribute("aria-hidden");
   await expect(firstPhoto).toBeFocused();
+  expect(ariaWarnings).toEqual([]);
 
   await page.locator("#q").fill("Elena");
   await page.waitForTimeout(250);
@@ -426,6 +433,31 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   await page.locator("#q").fill("Omar");
   await page.waitForTimeout(250);
   await expect(page.locator(".empty .big")).toHaveText("No matching photos");
+});
+
+test("downloads the current lightbox photo", async ({ page }) => {
+  const remoteIndex = structuredClone(fixture.index);
+  remoteIndex["1001"].media[0].url = "https://pbs.twimg.com/media/one.jpg?name=small";
+  await openFeed(page, remoteIndex, fixture.state);
+  await page.locator('[data-mode="photos"]').click();
+  await page.locator(".gallery-card").first().click();
+  await page.locator("#lb-download").click();
+
+  await expect.poll(() => page.evaluate(() => window.__photoDownloads.length)).toBe(1);
+  expect(await page.evaluate(() => window.__photoDownloads[0])).toEqual({
+    url: "https://pbs.twimg.com/media/one.jpg?name=orig",
+    filename: "x-likes-search/devonml-1001-1.jpg",
+    conflictAction: "uniquify",
+    saveAs: false,
+  });
+  await expect(page.locator("#toast-txt")).toHaveText("Started 1 photo download");
+
+  await page.evaluate(() => {
+    window.__downloadFailureUrls = ["https://pbs.twimg.com/media/one.jpg?name=orig"];
+  });
+  await page.locator("#lb-download").click();
+  await expect.poll(() => page.evaluate(() => window.__photoDownloads.length)).toBe(2);
+  await expect(page.locator("#toast-txt")).toHaveText("Started 0 downloads · 1 failed");
 });
 
 test("selects and downloads original gallery photos", async ({ page }) => {

@@ -43,6 +43,7 @@ const els = {
   lightboxAuthor: $("#lb-author"),
   lightboxHandle: $("#lb-handle"),
   lightboxCount: $("#lb-count"),
+  lightboxDownload: /** @type {HTMLButtonElement} */ ($("#lb-download")),
   photoActions: $("#photo-actions"),
   photoSelect: /** @type {HTMLButtonElement} */ ($("#photo-select")),
   photoSelection: $("#photo-selection"),

@@ -28,7 +28,7 @@ If you use likes as bookmarks, finding an old post later usually means scrolling
 ## Features
 
 - **Fast local search** across post text, display names, and usernames.
-- **Photo gallery** with responsive browsing, full-size previews, keyboard navigation, selected-photo downloads, and links back to X.
+- **Photo gallery** with responsive browsing, full-size previews, keyboard navigation, single-photo and selected-photo downloads, and links back to X.
 - **Safe synchronization** that adds new likes and removes unliked posts only after reaching a verified timeline end.
 - **Local-first privacy** with no server, telemetry, or data upload.
 - **CSV export** for opening the current results in Excel or Numbers, plus raw JSON export for advanced use.
@@ -74,7 +74,7 @@ The status bar shows the current page and how many likes have been checked. Afte
 
 - Switch from **Posts** to **Photos** to see every photo from the currently filtered likes.
 - Search and sorting apply to the source posts before their photos are shown.
-- Click a photo for a larger preview, then use the arrow keys or on-screen controls to move through the full result set.
+- Click a photo for a larger preview, then use the arrow keys or on-screen controls to move through the full result set. Use the download button in the preview to save that original-size photo.
 - Click **select** to choose photos, then **download** to save their original-size files under `Downloads/x-likes-search/`.
 - Photos stay linked to their source post, so **open on X** takes you back to the original context.
 - After upgrading from a version before `0.5.0`, run sync once to add photo metadata to likes already stored locally.
@@ -94,7 +94,7 @@ The captured request template and indexed likes stay inside the extension. Reque
 | `storage` | Stores the request template, indexed likes, and sync state locally in Chrome. |
 | `unlimitedStorage` | Prevents large local indexes from hitting Chrome's default extension storage quota. |
 | `tabs` | Opens or focuses the extension feed, original posts, and the X Likes setup page. |
-| `downloads` | Saves only the original-size photos you explicitly select in the gallery. |
+| `downloads` | Saves only the original-size photos you explicitly download from the preview or gallery selection. |
 | Access to `x.com` and `twitter.com` | Captures the Likes request and sends sync requests directly to X. |
 
 - There is no backend server and no telemetry.

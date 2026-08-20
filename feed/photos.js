@@ -17,6 +17,7 @@ const GALLERY_BATCH_SIZE = 60;
  *   lightboxAuthor: HTMLElement,
  *   lightboxHandle: HTMLElement,
  *   lightboxCount: HTMLElement,
+ *   lightboxDownload: HTMLButtonElement,
  *   photoActions: HTMLElement,
  *   photoSelect: HTMLButtonElement,
  *   photoSelection: HTMLElement,
@@ -41,6 +42,7 @@ export function createPhotosController({ state, els, appNow, openTweet, download
   let galleryItems = [];
   let galleryRendered = 0;
   let lightboxIndex = -1;
+  let lightboxDownloading = false;
   let selecting = false;
   let downloading = false;
   let selectionGeneration = 0;
@@ -165,13 +167,30 @@ export function createPhotosController({ state, els, appNow, openTweet, download
     els.lightboxCount.textContent = `${lightboxIndex + 1} / ${galleryItems.length}`;
   }
 
+  async function downloadLightboxPhoto() {
+    if (lightboxDownloading) return;
+    const item = galleryItems[lightboxIndex];
+    if (!item) return;
+    lightboxDownloading = true;
+    els.lightboxDownload.disabled = true;
+    els.lightboxDownload.setAttribute("aria-label", "Downloading photo");
+    els.lightboxDownload.title = "Downloading photo";
+    try {
+      await downloadPhotos([item]);
+    } finally {
+      lightboxDownloading = false;
+      els.lightboxDownload.disabled = false;
+      els.lightboxDownload.setAttribute("aria-label", "Download photo");
+      els.lightboxDownload.title = "Download photo";
+    }
+  }
+
   /** @param {number} index */
   function open(index) {
     if (!galleryItems[index]) return;
     lightboxReturnFocus = document.activeElement;
     lightboxIndex = index;
     els.lightbox.hidden = false;
-    els.lightbox.setAttribute("aria-hidden", "false");
     renderLightbox();
     const closeButton = els.lightbox.querySelector(".lb-close");
     if (closeButton instanceof HTMLElement) closeButton.focus();
@@ -187,7 +206,6 @@ export function createPhotosController({ state, els, appNow, openTweet, download
     }
     lightboxIndex = -1;
     els.lightbox.hidden = true;
-    els.lightbox.setAttribute("aria-hidden", "true");
     els.lightboxImage.removeAttribute("src");
     lightboxReturnFocus = null;
   }
@@ -263,6 +281,7 @@ export function createPhotosController({ state, els, appNow, openTweet, download
       const item = galleryItems[lightboxIndex];
       if (item) openTweet(item.tweet);
     });
+    els.lightboxDownload.addEventListener("click", () => { void downloadLightboxPhoto(); });
     els.photoSelect.addEventListener("click", startSelection);
     els.photoCancel.addEventListener("click", cancelSelection);
     els.photoDownload.addEventListener("click", downloadSelection);
