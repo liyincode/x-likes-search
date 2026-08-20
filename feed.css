@@ -387,7 +387,7 @@ body {
 .gallery-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gallery-card img { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform .2s ease; }
 .gallery-card:hover img { transform: scale(1.025); }
-.gallery-card.is-selecting { cursor: copy; }
+.gallery-card.is-selecting { cursor: pointer; }
 .gallery-card.is-selecting:hover img { transform: none; }
 .gallery-card.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 .gallery-check {
