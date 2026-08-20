@@ -19,6 +19,8 @@ async function installChromeMock(page, index = fixture.index, state = fixture.st
     window.__storageListeners = [];
     window.__storageGets = [];
     window.__downloads = [];
+    window.__photoDownloads = [];
+    window.__downloadFailureUrls = [];
     window.confirm = () => true;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -71,6 +73,15 @@ async function installChromeMock(page, index = fixture.index, state = fixture.st
         sendMessage(tabId, msg, cb) {
           window.__messagesSent.push({ tabId, msg });
           if (cb) cb({ ok: true, total: 4, added: 0 });
+        },
+      },
+      downloads: {
+        async download(options) {
+          window.__photoDownloads.push(options);
+          if (window.__downloadFailureUrls.includes(options.url)) {
+            throw new Error("Mock download failure");
+          }
+          return window.__photoDownloads.length;
         },
       },
     };
@@ -229,7 +240,7 @@ test("keeps a long expanded row mounted while scrolling to actions", async ({ pa
   });
 });
 
-test("theme, history, filters, sorting, export, and storage refresh work", async ({ page }) => {
+test("theme, history, filters, sorting, export menu, and storage refresh work", async ({ page }) => {
   await openFeed(page);
   await page.locator("#theme-btn").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -250,8 +261,27 @@ test("theme, history, filters, sorting, export, and storage refresh work", async
   await expect(page.locator(".row").first().locator(".nm")).toContainText("Devon");
   await page.locator('[data-sort="oldest"]').click();
   await expect(page.locator(".row").first()).toHaveAttribute("data-id", "1004");
+  await page.locator("#q").fill("Claude");
+  await page.waitForTimeout(250);
+  await page.locator("#export").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator('[data-export="csv"]')).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#export")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#q")).toHaveValue("Claude");
   await page.locator("#export").click();
-  expect(await page.evaluate(() => window.__downloads[0].download)).toMatch(/^x-likes-\d{4}-\d{2}-\d{2}\.json$/);
+  await expect(page.locator("#export")).toHaveAttribute("aria-expanded", "true");
+  await page.locator('[data-export="csv"]').click();
+  expect(await page.evaluate(() => window.__downloads[0].download)).toMatch(/^x-likes-results-\d{4}-\d{2}-\d{2}\.csv$/);
+  const exportedCSV = await page.evaluate(async () => fetch(window.__downloads[0].href).then((response) => response.text()));
+  expect(exportedCSV).toContain("Claude wrote a migration script");
+  expect(exportedCSV).toContain("Spent the morning getting Claude");
+  expect(exportedCSV).not.toContain("design systems");
+  await page.locator("#export").click();
+  await page.locator('[data-export="json"]').click();
+  expect(await page.evaluate(() => window.__downloads[1].download)).toMatch(/^x-likes-\d{4}-\d{2}-\d{2}\.json$/);
+  const exportedJSON = await page.evaluate(async () => fetch(window.__downloads[1].href).then((response) => response.json()));
+  expect(exportedJSON).toHaveLength(4);
 
   await page.evaluate(() => {
     const nextIndex = { ...window.__localStore.x_likes_index, "1005": {
@@ -336,6 +366,7 @@ test("starts and stops sync through the background worker", async ({ page }) => 
   });
   await expect(page.locator("#sb-status")).toHaveText("Syncing… Page 2 · 60 checked · +30");
   await expect(page.locator("#open-likes")).toHaveText("stop");
+  await expect(page.locator("#export")).toBeDisabled();
 
   // Clicking while running sends STOP_SYNC.
   await page.locator("#open-likes").click();
@@ -350,6 +381,7 @@ test("starts and stops sync through the background worker", async ({ page }) => 
     window.__storageListeners.forEach((fn) => fn({ x_likes_sync: { newValue: window.__localStore.x_likes_sync } }, "local"));
   });
   await expect(page.locator("#open-likes")).toHaveText("sync");
+  await expect(page.locator("#export")).toBeEnabled();
 
   // From a fresh worker (no captured template) START_SYNC surfaces an error.
   await page.evaluate(() => { window.__workerResponse = { ok: false, error: "No captured request yet." }; });
@@ -394,6 +426,68 @@ test("browses, searches, navigates, and opens liked photos", async ({ page }) =>
   await page.locator("#q").fill("Omar");
   await page.waitForTimeout(250);
   await expect(page.locator(".empty .big")).toHaveText("No matching photos");
+});
+
+test("selects and downloads original gallery photos", async ({ page }) => {
+  const remoteIndex = structuredClone(fixture.index);
+  remoteIndex["1001"].media[0].url = "https://pbs.twimg.com/media/one.jpg?name=small";
+  remoteIndex["1001"].media[1].url = "https://pbs.twimg.com/media/two?format=png&name=small";
+  await openFeed(page, remoteIndex, fixture.state);
+  await page.locator('[data-mode="photos"]').click();
+  await page.locator("#photo-select").click();
+
+  const cards = page.locator(".gallery-card");
+  await cards.nth(0).click();
+  await cards.nth(1).click();
+  await expect(page.locator("#lightbox")).toBeHidden();
+  await expect(page.locator("#photo-selected-count")).toHaveText("2 selected");
+  await expect(cards.nth(0)).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#photo-download").click();
+
+  await expect.poll(() => page.evaluate(() => window.__photoDownloads.length)).toBe(2);
+  const downloads = await page.evaluate(() => window.__photoDownloads);
+  expect(downloads).toEqual([
+    {
+      url: "https://pbs.twimg.com/media/one.jpg?name=orig",
+      filename: "x-likes-search/devonml-1001-1.jpg",
+      conflictAction: "uniquify",
+      saveAs: false,
+    },
+    {
+      url: "https://pbs.twimg.com/media/two?format=png&name=orig",
+      filename: "x-likes-search/devonml-1001-2.png",
+      conflictAction: "uniquify",
+      saveAs: false,
+    },
+  ]);
+  await expect(page.locator("#photo-select")).toBeVisible();
+  await expect(page.locator("#photo-selection")).toBeHidden();
+
+  await page.locator("#photo-select").click();
+  await cards.nth(0).click();
+  await page.locator("#q").fill("Elena");
+  await expect(page.locator("#photo-selection")).toBeHidden();
+  await expect(page.locator("#photo-select")).toBeVisible();
+});
+
+test("keeps only failed photos selected after a partial download", async ({ page }) => {
+  const remoteIndex = structuredClone(fixture.index);
+  remoteIndex["1001"].media[0].url = "https://pbs.twimg.com/media/one.jpg?name=small";
+  remoteIndex["1001"].media[1].url = "https://pbs.twimg.com/media/two.jpg?name=small";
+  await openFeed(page, remoteIndex, fixture.state);
+  await page.evaluate(() => {
+    window.__downloadFailureUrls = ["https://pbs.twimg.com/media/one.jpg?name=orig"];
+  });
+  await page.locator('[data-mode="photos"]').click();
+  await page.locator("#photo-select").click();
+  await page.locator(".gallery-card").nth(0).click();
+  await page.locator(".gallery-card").nth(1).click();
+  await page.locator("#photo-download").click();
+
+  await expect(page.locator("#photo-selected-count")).toHaveText("1 selected");
+  await expect(page.locator(".gallery-card").nth(0)).toHaveClass(/is-selected/);
+  await expect(page.locator(".gallery-card").nth(1)).not.toHaveClass(/is-selected/);
+  await expect(page.locator("#toast-txt")).toHaveText("Started 1 downloads · 1 failed");
 });
 
 test("shows gallery image failures and photo indexing empty states", async ({ page }) => {
@@ -459,6 +553,12 @@ test("visual photo states match the Finder direction", async ({ page }) => {
   await openFeed(page);
   await page.locator('[data-mode="photos"]').click();
   await expect(page).toHaveScreenshot("finder-photos-dark.png", { maxDiffPixelRatio: 0.02 });
+  await page.locator("#photo-select").click();
+  await expect(page.locator("#photo-select")).toBeHidden();
+  await page.locator(".gallery-card").first().click();
+  await expect(page).toHaveScreenshot("finder-photos-selection-dark.png", { maxDiffPixelRatio: 0.02 });
+  await page.locator("#photo-cancel").click();
+  await expect(page.locator("#photo-select")).toBeVisible();
   await page.locator(".gallery-card").first().click();
   await expect(page).toHaveScreenshot("finder-photo-lightbox-dark.png", { maxDiffPixelRatio: 0.02 });
   await page.keyboard.press("Escape");

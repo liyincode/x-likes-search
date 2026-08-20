@@ -1,6 +1,7 @@
 import { INDEX_VERSION } from "./core/constants.js";
 import { escapeHTML } from "./core/format.js";
 import { addHistory, countMatches, removeHistory } from "./core/search.js";
+import { createExportController } from "./feed/export.js";
 import { createPhotosController } from "./feed/photos.js";
 import { createPostsController } from "./feed/posts.js";
 import {
@@ -31,6 +32,9 @@ const els = {
   sort: $("#sort"),
   viewMode: $("#view-mode"),
   theme: $("#theme-btn"),
+  exportWrap: $("#export-wrap"),
+  exportButton: /** @type {HTMLButtonElement} */ ($("#export")),
+  exportMenu: $("#export-menu"),
   toast: $("#toast"),
   toastText: $("#toast-txt"),
   lightbox: $("#lightbox"),
@@ -39,6 +43,12 @@ const els = {
   lightboxAuthor: $("#lb-author"),
   lightboxHandle: $("#lb-handle"),
   lightboxCount: $("#lb-count"),
+  photoActions: $("#photo-actions"),
+  photoSelect: /** @type {HTMLButtonElement} */ ($("#photo-select")),
+  photoSelection: $("#photo-selection"),
+  photoSelectedCount: $("#photo-selected-count"),
+  photoDownload: /** @type {HTMLButtonElement} */ ($("#photo-download")),
+  photoCancel: /** @type {HTMLButtonElement} */ ($("#photo-cancel")),
 };
 
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>';
@@ -115,7 +125,6 @@ function initTheme() {
 
 function updateSyncButtons() {
   const syncButton = $("#open-likes");
-  const exportButton = $("#export");
   const empty = appState.allLikes.length === 0;
   /**
    * @param {string} selector
@@ -125,19 +134,17 @@ function updateSyncButtons() {
     const element = $(selector);
     if (element) element.style.display = hidden ? "none" : "";
   };
-  setHidden("#export", empty);
+  setHidden("#export-wrap", empty);
   setHidden(".filters", empty);
   if (syncButton) {
     syncButton.textContent = appState.syncState.running ? "stop" : "sync";
     /** @type {HTMLButtonElement} */ (syncButton).disabled = false;
     syncButton.title = appState.syncState.running ? "Stop sync" : "Sync likes";
   }
-  if (exportButton) {
-    /** @type {HTMLButtonElement} */ (exportButton).disabled = Boolean(appState.syncState.running);
-    exportButton.title = appState.syncState.running
-      ? "Wait until sync finishes"
-      : "Export indexed likes as JSON";
-  }
+  exporter.setDisabled(Boolean(appState.syncState.running));
+  els.exportButton.title = appState.syncState.running
+    ? "Wait until sync finishes"
+    : "Export current results or raw data";
 }
 
 function updateStatus() {
@@ -271,18 +278,9 @@ function scheduleRender(resetScroll = true) {
  * @param {boolean} [resetScroll]
  */
 function applyIndex(index, resetScroll = true) {
+  photos.cancelSelection();
   applyIndexModel(index);
   renderCurrentMode(resetScroll);
-}
-
-function exportLikes() {
-  const blob = new Blob([JSON.stringify(appState.rawLikes, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `x-likes-${new Date().toISOString().slice(0, 10)}.json`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const posts = createPostsController({
@@ -293,7 +291,18 @@ const posts = createPostsController({
   openTweet,
   copyLink,
 });
-const photos = createPhotosController({ state: appState, els, appNow, openTweet });
+const exporter = createExportController({
+  state: appState,
+  els: { wrap: els.exportWrap, button: els.exportButton, menu: els.exportMenu },
+  showToast,
+});
+const photos = createPhotosController({
+  state: appState,
+  els,
+  appNow,
+  openTweet,
+  downloadPhotos: exporter.downloadPhotos,
+});
 const sync = createSyncController({
   state: appState,
   showToast,
@@ -309,6 +318,7 @@ function wireEvents() {
   });
 
   els.q.addEventListener("input", () => {
+    photos.cancelSelection();
     appState.q = els.q.value.trim();
     appState.active = -1;
     updateMatchCountPreview();
@@ -341,6 +351,7 @@ function wireEvents() {
     const item = target.closest(".h-item");
     if (!item) return;
     event.preventDefault();
+    photos.cancelSelection();
     els.q.value = item.getAttribute("data-q") || "";
     appState.q = els.q.value;
     appState.active = -1;
@@ -374,6 +385,7 @@ function wireEvents() {
       els.history.classList.remove("show");
       if (!els.q.value) return;
       event.preventDefault();
+      photos.cancelSelection();
       els.q.value = "";
       appState.q = "";
       appState.active = -1;
@@ -402,6 +414,7 @@ function wireEvents() {
     if (!button) return;
     const sort = button.dataset.sort;
     if (sort !== "newest" && sort !== "oldest" && sort !== "author") return;
+    photos.cancelSelection();
     appState.sort = sort;
     [...els.sort.children].forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
     invalidatePipelineCache();
@@ -415,6 +428,7 @@ function wireEvents() {
     if (!button) return;
     const mode = /** @type {HTMLElement} */ (button).dataset.mode;
     if ((mode !== "posts" && mode !== "photos") || mode === appState.mode) return;
+    photos.cancelSelection();
     appState.mode = mode;
     appState.active = -1;
     [...els.viewMode.children].forEach((item) =>
@@ -429,7 +443,6 @@ function wireEvents() {
     else posts.schedulePaint();
   });
   $("#open-likes").addEventListener("click", sync.toggle);
-  $("#export").addEventListener("click", exportLikes);
   chrome.storage.onChanged.addListener(sync.onStorageChanged);
   window.addEventListener("pagehide", sync.dispose);
 }

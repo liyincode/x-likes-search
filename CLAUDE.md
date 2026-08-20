@@ -46,7 +46,7 @@ The hard part of this codebase is that code runs in four isolated JavaScript con
 
 3. **Module service worker — `background.js`** (`manifest.json` declares `"type": "module"`). It statically imports `background/runtime.js`, `background/sync.js`, and DOM-free modules from `core/`. Given a stored template it replays the Likes GraphQL endpoint with `fetch(url, { credentials: "include", headers })`; no x.com tab is involved.
 
-4. **Module extension page — `feed.html` + `feed.js` + `feed/` + `core/`** (opened by `background.js`). `feed.js` composes page behavior; `feed/state.js`, `feed/posts.js`, `feed/photos.js`, and `feed/sync.js` own their state and responsibilities. It drives sync by messaging the service worker.
+4. **Module extension page — `feed.html` + `feed.js` + `feed/` + `core/`** (opened by `background.js`). `feed.js` composes page behavior; `feed/state.js`, `feed/posts.js`, `feed/photos.js`, `feed/export.js`, and `feed/sync.js` own their state and responsibilities. It drives sync by messaging the service worker; CSV/JSON export and explicitly selected photo downloads remain local user actions.
 
 ### Message protocols
 

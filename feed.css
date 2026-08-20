@@ -205,6 +205,39 @@ body {
 }
 .ico-btn.square { padding: 7px; width: 32px; height: 32px; justify-content: center; }
 .ico-btn svg { display: block; }
+.export-wrap { position: relative; }
+.export-menu {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 228px;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.export-menu[hidden] { display: none; }
+.export-menu button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--txt);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.export-menu button:hover,
+.export-menu button:focus-visible { background: var(--panel-hi); outline: none; }
+.export-menu button:disabled { opacity: .45; cursor: not-allowed; }
+.export-menu strong { font-family: var(--mono); font-size: 11.5px; font-weight: 500; }
+.export-menu span { color: var(--txt-3); font-size: 11px; }
 
 /* Search + filters live in the fixed top chrome (outside .feed-scroll), so they
    never move and the search box can't jump — only .results scrolls. */
@@ -284,6 +317,18 @@ body {
 .h-item:hover .x { opacity: 1; }
 
 .filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 2px 6px; flex-wrap: wrap; }
+.filter-right,
+.photo-actions,
+.photo-selection { display: inline-flex; align-items: center; gap: 7px; }
+.photo-actions[hidden],
+.photo-selection[hidden],
+#photo-select[hidden] { display: none; }
+#photo-selected-count {
+  color: var(--txt-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
 .sortgrp,
 .viewgrp { display: inline-flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
 .sortgrp button,
@@ -342,6 +387,32 @@ body {
 .gallery-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gallery-card img { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform .2s ease; }
 .gallery-card:hover img { transform: scale(1.025); }
+.gallery-card.is-selecting { cursor: copy; }
+.gallery-card.is-selecting:hover img { transform: none; }
+.gallery-card.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.gallery-check {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  right: 9px;
+  width: 23px;
+  height: 23px;
+  display: none;
+  place-items: center;
+  border: 1px solid oklch(1 0 0 / .55);
+  border-radius: 50%;
+  color: transparent;
+  background: oklch(0 0 0 / .48);
+  box-shadow: 0 2px 8px oklch(0 0 0 / .35);
+  font-size: 14px;
+  font-weight: 700;
+}
+.gallery-card.is-selecting .gallery-check { display: grid; }
+.gallery-card.is-selected .gallery-check {
+  border-color: var(--accent);
+  color: white;
+  background: var(--accent);
+}
 .gallery-card.is-error img { display: none; }
 .gallery-placeholder {
   position: absolute;

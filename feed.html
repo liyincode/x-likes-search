@@ -17,7 +17,19 @@
           </svg>
         </a>
         <button class="ico-btn square" id="theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
-        <button class="ico-btn" id="export">export</button>
+        <div class="export-wrap" id="export-wrap">
+          <button class="ico-btn" id="export" aria-haspopup="menu" aria-expanded="false">export</button>
+          <div class="export-menu" id="export-menu" role="menu" hidden>
+            <button role="menuitem" data-export="csv">
+              <strong>CSV current results</strong>
+              <span>Open in Excel or Numbers</span>
+            </button>
+            <button role="menuitem" data-export="json">
+              <strong>JSON raw data</strong>
+              <span>Advanced format</span>
+            </button>
+          </div>
+        </div>
         <button class="ico-btn accent" id="open-likes">sync</button>
       </div>
 
@@ -41,9 +53,19 @@
           <button data-sort="oldest" aria-pressed="false">oldest</button>
           <button data-sort="author" aria-pressed="false">author</button>
         </div>
-        <div class="viewgrp" id="view-mode" aria-label="View mode">
-          <button data-mode="posts" aria-pressed="true">posts</button>
-          <button data-mode="photos" aria-pressed="false">photos</button>
+        <div class="filter-right">
+          <div class="photo-actions" id="photo-actions" hidden>
+            <button class="mini" id="photo-select">select</button>
+            <div class="photo-selection" id="photo-selection" hidden>
+              <span id="photo-selected-count">0 selected</span>
+              <button class="mini primary" id="photo-download" disabled>download</button>
+              <button class="mini" id="photo-cancel">cancel</button>
+            </div>
+          </div>
+          <div class="viewgrp" id="view-mode" aria-label="View mode">
+            <button data-mode="posts" aria-pressed="true">posts</button>
+            <button data-mode="photos" aria-pressed="false">photos</button>
+          </div>
         </div>
       </div>
 
