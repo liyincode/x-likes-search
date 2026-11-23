@@ -18,7 +18,7 @@
         </a>
         <button class="ico-btn square" id="theme-btn" title="Toggle theme" aria-label="Toggle theme"></button>
         <div class="export-wrap" id="export-wrap">
-          <button class="ico-btn" id="export" aria-haspopup="menu" aria-expanded="false">export</button>
+          <button class="ico-btn" id="export" aria-haspopup="menu" aria-expanded="false">data</button>
           <div class="export-menu" id="export-menu" role="menu" hidden>
             <button role="menuitem" data-export="csv">
               <strong>Export current results (CSV)</strong>
@@ -28,6 +28,7 @@
               <strong>Back up all data (JSON)</strong>
               <span>Advanced format</span>
             </button>
+            <button role="menuitem" id="clear-posts"><strong>Clear local posts…</strong></button>
           </div>
         </div>
         <button class="ico-btn accent" id="open-likes">sync</button>
@@ -90,6 +91,15 @@
         </span>
       </div>
     </div>
+
+    <dialog id="clear-dialog" aria-labelledby="clear-title" aria-describedby="clear-note">
+      <h2 id="clear-title">Clear local posts?</h2>
+      <p id="clear-note">Your likes on X are safe. Sync again to download them.</p>
+      <form method="dialog">
+        <button class="ico-btn" value="cancel" autofocus>Cancel</button>
+        <button class="ico-btn" value="clear">Clear local posts</button>
+      </form>
+    </dialog>
 
     <div class="toast" id="toast"><span class="ic">✓</span><span id="toast-txt">Link copied</span></div>
 

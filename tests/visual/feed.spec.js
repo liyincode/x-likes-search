@@ -646,3 +646,53 @@ test("shortcut hints match the platform and search context", async ({ page }) =>
   await expect(page.locator("#clear-search-hint")).toBeVisible();
   await expect(page.locator(".row")).toHaveCount(2);
 });
+
+test("clearing local posts requires explicit confirmation for the full index", async ({ page }) => {
+  await openFeed(page);
+  await page.locator("#q").fill("Claude");
+  await expect(page.locator(".row")).toHaveCount(2);
+
+  async function openClear() {
+    await page.getByRole("button", { name: "data", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Clear local posts…" }).click();
+    await expect(page.getByRole("dialog", { name: "Clear 4 local posts?" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  }
+  const clearCalls = () => page.evaluate(() => window.__runtimeMessages.filter(m => m.type === "CLEAR_LOCAL_POSTS").length);
+  await openClear();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#q")).toHaveValue("Claude");
+  expect(await clearCalls()).toBe(0);
+  await openClear();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#clear-dialog")).toBeHidden();
+  expect(await clearCalls()).toBe(0);
+
+  await page.evaluate(() => {
+    window.__workerResponse = { ok: false, error: "Could not clear local posts. Try again." };
+  });
+  await openClear();
+  await page.getByRole("button", { name: "Clear local posts", exact: true }).click();
+  await expect(page.locator("#toast")).toContainText("Could not clear");
+  await expect(page.locator(".row")).toHaveCount(2);
+
+  await page.evaluate(() => {
+    chrome.runtime.sendMessage = (msg, reply) => {
+      window.__runtimeMessages.push(msg);
+      if (msg.type === "CLEAR_LOCAL_POSTS") {
+        const changes = {};
+        for (const key of ["x_likes_index", "x_likes_sync", "x_likes_state"]) {
+          window.__localStore[key] = {};
+          changes[key] = { newValue: {} };
+        }
+        window.__storageListeners.forEach(listener => listener(changes, "local"));
+      }
+      reply({ ok: true });
+    };
+  });
+  await openClear();
+  await page.getByRole("button", { name: "Clear local posts", exact: true }).click();
+  await expect(page.locator("#empty .big")).toHaveText("No likes indexed yet");
+  await expect(page.locator("#toast")).toContainText("Local posts cleared");
+  await expect(page.locator("#open-likes")).toBeEnabled();
+});

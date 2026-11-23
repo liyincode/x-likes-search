@@ -708,3 +708,17 @@ body[data-mode="photos"] .sb-hints .photos-hints { display: inline-flex; }
 .cmd:focus-within .search-shortcut,
 body:has(#q:placeholder-shown) #clear-search-hint,
 body:has(.history.show, #lightbox:not([hidden]), #export-menu:not([hidden]), #photo-selection:not([hidden])) #clear-search-hint { display: none; }
+
+#clear-dialog {
+  margin: auto;
+  max-width: min(26rem, 90vw);
+  padding: 24px;
+  color: var(--txt);
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  overscroll-behavior: contain;
+}
+#clear-dialog::backdrop { background: rgb(0 0 0 / 55%); overflow: hidden; overscroll-behavior: contain; }
+#clear-dialog p { margin: 12px 0 20px; color: var(--txt-2); }
+#clear-dialog form { display: flex; justify-content: flex-end; gap: 8px; }

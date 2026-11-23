@@ -10,7 +10,7 @@ const SYNC_RECONCILE_MS = 10000;
 
 /** @typedef {import("../core/likes.js").LikeIndex} LikeIndex */
 /** @typedef {typeof import("./state.js").appState} AppState */
-/** @typedef {{ type: "START_SYNC" | "STOP_SYNC" | "SYNC_STATUS" }} WorkerMessage */
+/** @typedef {{ type: "START_SYNC" | "STOP_SYNC" | "SYNC_STATUS" | "CLEAR_LOCAL_POSTS" }} WorkerMessage */
 /** @typedef {{ ok?: boolean, error?: string, alreadyRunning?: boolean, running?: boolean, state?: import("./state.js").SyncState }} WorkerResponse */
 /**
  * @typedef {{
@@ -72,6 +72,11 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
       return;
     }
     showToast(response.alreadyRunning ? "Sync already running" : "Sync started");
+  }
+
+  async function clearLocalPosts() {
+    const response = await sendToWorker({ type: "CLEAR_LOCAL_POSTS" });
+    showToast(response?.ok ? "Local posts cleared" : response?.error || "Could not reach the extension worker");
   }
 
   async function refresh() {
@@ -160,6 +165,7 @@ export function createSyncController({ state, showToast, updateStatus, applyInde
   return {
     INDEX_REFRESH_MS,
     SYNC_RECONCILE_MS,
+    clearLocalPosts,
     dispose,
     loadIndex,
     loadIndexState,

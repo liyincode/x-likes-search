@@ -21,6 +21,7 @@ const RENDER_DEBOUNCE_MS = 200;
 const $ = (selector) => /** @type {HTMLElement} */ (document.querySelector(selector));
 
 const els = {
+  clearDialog: /** @type {HTMLDialogElement} */ ($("#clear-dialog")),
   q: /** @type {HTMLInputElement} */ ($("#q")),
   feedScroll: $("#feed-scroll"),
   results: $("#results"),
@@ -127,6 +128,7 @@ function initTheme() {
 function updateSyncButtons() {
   const syncButton = $("#open-likes");
   const empty = appState.allLikes.length === 0;
+  if (appState.syncState.running && els.clearDialog.open) els.clearDialog.close();
   /**
    * @param {string} selector
    * @param {boolean} hidden
@@ -145,7 +147,7 @@ function updateSyncButtons() {
   exporter.setDisabled(Boolean(appState.syncState.running));
   els.exportButton.title = appState.syncState.running
     ? "Wait until sync finishes"
-    : "Export current results or raw data";
+    : "Export or clear local posts";
 }
 
 function updateStatus() {
@@ -228,8 +230,8 @@ function copyLink(tweet, button) {
 function renderEmptyState() {
   els.results.style.display = "none";
   els.gallery.hidden = true;
-  if (appState.mode === "photos") {
-    photos.clear();
+  photos.clear();
+  if (appState.mode === "photos" && appState.allLikes.length) {
     if (Number(appState.indexState.indexVersion || 0) < INDEX_VERSION) {
       els.empty.innerHTML = '<div class="empty"><div class="big">Photos need indexing</div><p>Run sync once to add photos to your existing likes.</p></div>';
     } else if (appState.q) {
@@ -280,6 +282,7 @@ function scheduleRender(resetScroll = true) {
  */
 function applyIndex(index, resetScroll = true) {
   photos.cancelSelection();
+  if (els.clearDialog.open) els.clearDialog.close();
   applyIndexModel(index);
   renderCurrentMode(resetScroll);
 }
@@ -314,6 +317,16 @@ const sync = createSyncController({
 
 function wireEvents() {
   $("#open-modifier").textContent = /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl";
+  $("#clear-posts").addEventListener("click", () => {
+    exporter.closeMenu(true);
+    const count = appState.allLikes.length;
+    $("#clear-title").textContent = `Clear ${count.toLocaleString()} local ${count === 1 ? "post" : "posts"}?`;
+    els.clearDialog.returnValue = "";
+    els.clearDialog.showModal();
+  });
+  els.clearDialog.addEventListener("close", () => {
+    if (els.clearDialog.returnValue === "clear") void sync.clearLocalPosts();
+  });
   els.theme.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
     applyTheme(current === "dark" ? "light" : "dark");
@@ -364,7 +377,7 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented || event.isComposing) return;
+    if (event.defaultPrevented || event.isComposing || els.clearDialog.open) return;
     if (photos.isOpen) {
       if (event.key === "Escape") {
         event.preventDefault();

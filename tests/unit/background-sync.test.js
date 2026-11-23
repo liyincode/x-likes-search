@@ -122,22 +122,23 @@ function createHarness(initialStore, setImpl, fetchBody = responseBody()) {
     return undefined;
   }
 
-  return { store, writes, fetchCalls, debugLogs, send };
+  return { store, writes, fetchCalls, debugLogs, send, engine };
 }
 
 test("runtime adapter maps feed messages to the sync engine", async () => {
   let listener;
   const calls = [];
-  const runtime = { onMessage: { addListener(fn) { listener = fn; } } };
+  const runtime = { getURL: path => "chrome-extension://test/" + path, onMessage: { addListener(fn) { listener = fn; } } };
   const engine = {
+    async clearLocalPosts() { calls.push("clear"); return { ok: true }; },
     async startSync() { calls.push("start"); return { ok: true, started: true }; },
     stopSync() { calls.push("stop"); },
     async getStatus() { calls.push("status"); return { ok: true, running: false }; },
   };
   registerRuntimeMessages(runtime, engine);
 
-  const send = (message) => new Promise((resolve) => {
-    const isAsync = listener(message, {}, resolve);
+  const send = (message, sender = {}) => new Promise((resolve) => {
+    const isAsync = listener(message, sender, resolve);
     if (!isAsync) queueMicrotask(() => resolve(undefined));
   });
 
@@ -145,7 +146,10 @@ test("runtime adapter maps feed messages to the sync engine", async () => {
   assert.deepEqual(await send({ source: "xls-feed", type: "SYNC_STATUS" }), { ok: true, running: false });
   assert.equal(await send({ source: "other", type: "START_SYNC" }), undefined);
   listener({ source: "xls-feed", type: "STOP_SYNC" }, {}, (response) => calls.push(response.ok));
-  assert.deepEqual(calls, ["start", "status", "stop", true]);
+  const clear = { source: "xls-feed", type: "CLEAR_LOCAL_POSTS" };
+  assert.equal(await send(clear, { url: "https://x.com/" }), undefined);
+  assert.deepEqual(await send(clear, { url: runtime.getURL("feed.html") }), { ok: true });
+  assert.deepEqual(calls, ["start", "status", "stop", true, "clear"]);
 });
 
 test("worker sync stops and reports an index quota failure", async () => {
@@ -554,4 +558,38 @@ test("worker preserves local likes when X returns an unrecognized response shape
   assert.match(status.state.error, /Could not find the Likes timeline/);
   assert.equal(status.state.removed, 0);
   assert.ok(harness.store.x_likes_index["1"]);
+});
+
+test("clear resets posts and sync status together, preserves the template and excludes overlapping syncs", async () => {
+  const template = { url: "https://x.com/i/api/graphql/hash/Likes?variables=%7B%7D" };
+  const { engine, store } = createHarness({
+    x_likes_index: { old: {} }, x_likes_state: { completed: true },
+    x_likes_sync: { done: true }, x_likes_template: template, theme: "light",
+  });
+  await engine.getStatus();
+  const clearing = engine.clearLocalPosts();
+  assert.equal((await engine.startSync()).ok, false);
+  assert.equal((await clearing).ok, true);
+  assert.deepEqual(store, {
+    x_likes_index: {}, x_likes_state: {}, x_likes_sync: {}, x_likes_template: template, theme: "light",
+  });
+  assert.deepEqual((await engine.getStatus()).state, {});
+  const starting = engine.startSync();
+  assert.equal((await engine.clearLocalPosts()).ok, false);
+  assert.equal((await starting).started, true);
+  while ((await engine.getStatus()).running) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.ok(store.x_likes_index["1"]);
+});
+
+test("failed clear preserves records and releases the lock for retry", async () => {
+  let failed = false;
+  const { engine, store } = createHarness({ x_likes_index: { old: {} } }, async () => {
+    if (!failed) {
+      failed = true;
+      throw new Error("write failed");
+    }
+  });
+  assert.equal((await engine.clearLocalPosts()).ok, false);
+  assert.deepEqual(store.x_likes_index, { old: {} });
+  assert.equal((await engine.clearLocalPosts()).ok, true);
 });

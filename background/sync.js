@@ -45,6 +45,7 @@ export function createSyncEngine(dependencies) {
   const tailConfirmDelayMs = dependencies.tailConfirmDelayMs ?? 1000;
 
 let syncing = false;
+let clearing = false;
 let stopRequested = false;
 /** @type {SyncState | null} */
 let liveSyncState = null;
@@ -92,7 +93,6 @@ async function setSyncState(patch) {
 
 /** @param {unknown} error */
 async function reportSyncFailure(error) {
-  syncing = false;
   const message = String(error instanceof Error ? error.message : error || "Sync failed.");
   const next = updateLiveSyncState({
     running: false,
@@ -116,6 +116,7 @@ async function reportSyncFailure(error) {
 async function currentSyncStatus() {
   if (liveSyncState) return { ok: true, running: syncing, state: liveSyncState };
   const stored = /** @type {SyncState | null} */ ((await getLocal(SYNC_KEY))[SYNC_KEY] || null);
+  if (liveSyncState || syncing || clearing) return { ok: true, running: syncing, state: liveSyncState };
   if (stored?.running) {
     const message = "Sync was interrupted. Start it again to continue.";
     const interrupted = {
@@ -239,21 +240,29 @@ async function fetchPage(requestUrl, method, headers, pageNum) {
 }
 
 async function startSync() {
+  if (clearing) return { ok: false, error: "Wait until local posts have been cleared." };
   if (syncing) return { ok: true, alreadyRunning: true };
-  const template = /** @type {RequestTemplate | undefined} */ ((await getLocal(TEMPLATE_KEY))[TEMPLATE_KEY]);
+  syncing = true;
+  stopRequested = false;
+  let template;
+  try {
+    template = /** @type {RequestTemplate | undefined} */ ((await getLocal(TEMPLATE_KEY))[TEMPLATE_KEY]);
+  } catch {
+    syncing = false;
+    return { ok: false, error: "Could not read the saved sync request." };
+  }
   if (!template || !template.url) {
+    syncing = false;
     return {
       ok: false,
       error:
         "No captured request yet. Open your X likes page once (refresh it) so the extension can capture the request, then try Sync.",
     };
   }
-  syncing = true;
-  stopRequested = false;
   // Fire and forget: the loop reports progress through chrome.storage, which the
   // feed page watches via storage.onChanged. We do NOT hold the message channel
   // open for the whole (multi-minute) sync.
-  syncLoop(template).catch(reportSyncFailure);
+  syncLoop(template).catch(reportSyncFailure).finally(() => { syncing = false; });
   return { ok: true, started: true };
 }
 
@@ -268,7 +277,6 @@ async function syncLoop(template) {
   try {
     url = new URL(template.url);
   } catch {
-    syncing = false;
     await setSyncState({
       running: false,
       done: true,
@@ -340,7 +348,6 @@ async function syncLoop(template) {
       const error = caught instanceof Error ? caught : new Error(String(caught));
       if (error.message === "stopped") break;
       if ("code" in error && error.code === "XLS_STORAGE_WRITE") throw error;
-      syncing = false;
       await markIncomplete();
       await setSyncState({
         running: false,
@@ -355,7 +362,6 @@ async function syncLoop(template) {
     }
 
     if (body.errors && !body.data) {
-      syncing = false;
       await markIncomplete();
       await setSyncState({
         running: false,
@@ -396,7 +402,6 @@ async function syncLoop(template) {
       terminateDirection,
     });
     if (!timelineFound) {
-      syncing = false;
       await markIncomplete();
       await setSyncState({
         running: false,
@@ -484,7 +489,6 @@ async function syncLoop(template) {
   await setLocalRequired({
     [STATE_KEY]: nextState,
   });
-  syncing = false;
   if (mediaFallbacks > 0) {
     logger.warn(`Used retweet media fallback for ${mediaFallbacks} liked posts.`);
   }
@@ -534,5 +538,20 @@ async function syncLoop(template) {
     }
   }
 
-  return { startSync, stopSync, getStatus };
+  async function clearLocalPosts() {
+    if (syncing) return { ok: false, error: "Stop sync before clearing local posts." };
+    if (clearing) return { ok: false, error: "Local posts are being cleared." };
+    clearing = true;
+    try {
+      await storage.set({ [STORAGE_KEY]: {}, [STATE_KEY]: {}, [SYNC_KEY]: {} });
+      liveSyncState = {};
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not clear local posts. Try again." };
+    } finally {
+      clearing = false;
+    }
+  }
+
+  return { startSync, stopSync, getStatus, clearLocalPosts };
 }
