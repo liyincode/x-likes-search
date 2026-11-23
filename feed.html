@@ -40,7 +40,8 @@
               <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
               <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
-            <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" />
+            <input id="q" type="text" placeholder="Find a liked tweet…" autocomplete="off" spellcheck="false" aria-label="Search liked posts" aria-keyshortcuts="/" />
+            <kbd class="key search-shortcut" title="Focus search">/</kbd>
             <span class="matchcount" id="mc"></span>
           </div>
           <div class="history" id="history"></div>
@@ -83,9 +84,9 @@
         <span class="sb-hints">
           <span class="posts-hints"><span class="key">↵</span><span class="key">↓</span> next</span>
           <span class="posts-hints"><span class="key">↑</span> prev</span>
-          <span class="posts-hints"><span class="key">⌘</span><span class="key">↵</span> open</span>
+          <span class="posts-hints"><span class="key" id="open-modifier">Ctrl</span><span class="key">↵</span> open</span>
           <span class="photos-hints"><span class="key">←</span><span class="key">→</span> browse</span>
-          <span><span class="key">esc</span> clear</span>
+          <span id="clear-search-hint"><span class="key">esc</span> clear search</span>
         </span>
       </div>
     </div>

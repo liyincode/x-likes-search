@@ -704,3 +704,7 @@ body[data-mode="photos"] .sb-hints .photos-hints { display: inline-flex; }
   .lb-footer { padding-left: 12px; }
   .lb-meta span { display: none; }
 }
+
+.cmd:focus-within .search-shortcut,
+body:has(#q:placeholder-shown) #clear-search-hint,
+body:has(.history.show, #lightbox:not([hidden]), #export-menu:not([hidden]), #photo-selection:not([hidden])) #clear-search-hint { display: none; }

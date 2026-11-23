@@ -632,3 +632,17 @@ test("implementation screenshots closely match the Finder reference", async ({ b
   await design.close();
   await impl.close();
 });
+
+test("shortcut hints match the platform and search context", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "Win32" }));
+  await openFeed(page);
+  await expect(page.locator("#open-modifier")).toHaveText("Ctrl");
+  await expect(page.locator(".search-shortcut")).toBeVisible();
+  await page.keyboard.press("/");
+  await expect(page.locator("#q")).toBeFocused();
+  await expect(page.locator(".search-shortcut")).toBeHidden();
+  await expect(page.locator("#clear-search-hint")).toBeHidden();
+  await page.locator("#q").fill("Claude");
+  await expect(page.locator("#clear-search-hint")).toBeVisible();
+  await expect(page.locator(".row")).toHaveCount(2);
+});

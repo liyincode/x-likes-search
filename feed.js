@@ -313,6 +313,7 @@ const sync = createSyncController({
 });
 
 function wireEvents() {
+  $("#open-modifier").textContent = /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl";
   els.theme.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
     applyTheme(current === "dark" ? "light" : "dark");
@@ -363,6 +364,7 @@ function wireEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.isComposing) return;
     if (photos.isOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -383,7 +385,16 @@ function wireEvents() {
       return;
     }
     if (event.key === "Escape") {
-      els.history.classList.remove("show");
+      if (els.history.classList.contains("show")) {
+        els.history.classList.remove("show");
+        event.preventDefault();
+        return;
+      }
+      if (!els.photoSelection.hidden) {
+        photos.cancelSelection();
+        event.preventDefault();
+        return;
+      }
       if (!els.q.value) return;
       event.preventDefault();
       photos.cancelSelection();
@@ -394,6 +405,7 @@ function wireEvents() {
       renderCurrentMode(true);
       return;
     }
+    if (event.target instanceof Element && event.target.closest("#export-wrap")) return;
     if (event.key === "ArrowDown" && appState.mode === "posts") {
       event.preventDefault();
       posts.move(1);
